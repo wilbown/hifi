@@ -108,6 +108,9 @@ namespace gpu {
         Mat4 _eyeProjections[2];
     };
 
+    class Serializer;
+    class Deserializer;
+
     class GPUObject {
     public:
         virtual ~GPUObject() = default;

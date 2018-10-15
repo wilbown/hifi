@@ -4026,6 +4026,19 @@ void Application::keyPressEvent(QKeyEvent* event) {
                 }
                 break;
 
+            case Qt::Key_G:
+                if (isShifted && isMeta) {
+                    static const QString HIFI_FRAMES_FOLDER_VAR = "HIFI_FRAMES_FOLDER";
+                    static const QString GPU_FRAME_FOLDER = QProcessEnvironment::systemEnvironment().contains(HIFI_FRAMES_FOLDER_VAR)
+                        ? QProcessEnvironment::systemEnvironment().value(HIFI_FRAMES_FOLDER_VAR)
+                        : "hifiFrames";
+                    static QString GPU_FRAME_TEMPLATE = GPU_FRAME_FOLDER + "/{DATE}_{TIME}";
+                    QString fullPath = FileUtils::computeDocumentPath(FileUtils::replaceDateTimeTokens(GPU_FRAME_TEMPLATE));
+                    if (FileUtils::canCreateFile(fullPath)) {
+                        getActiveDisplayPlugin()->captureFrame(fullPath.toStdString());
+                    }
+                }
+                break;
             case Qt::Key_X:
                 if (isShifted && isMeta) {
                     auto offscreenUi = getOffscreenUI();

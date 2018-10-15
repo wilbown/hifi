@@ -393,7 +393,7 @@ void GLBackend::renderPassDraw(const Batch& batch) {
 }
 
 void GLBackend::render(const Batch& batch) {
-    PROFILE_RANGE(render_gpu_gl, batch.getName());
+    PROFILE_RANGE(render_gpu_gl, batch.getName().c_str());
 
     _transform._skybox = _stereo._skybox = batch.isSkyboxEnabled();
     // Allow the batch to override the rendering stereo settings
