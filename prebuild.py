@@ -245,7 +245,6 @@ def main():
     vcpkg.writeTag()
 
 
-
 from argparse import ArgumentParser
 parser = ArgumentParser(description='Prepare build dependencies.')
 parser.add_argument('--android', action='store_true')
@@ -254,7 +253,15 @@ parser.add_argument('--force-bootstrap', action='store_true')
 parser.add_argument('--force-build', action='store_true')
 parser.add_argument('--vcpkg-root', type=str, help='The location of the vcpkg distribution')
 parser.add_argument('--build-root', required=True, type=str, help='The location of the cmake build')
-
 args = parser.parse_args()
+
+# Fixup env variables.  Leaving `USE_CCACHE` on will cause scribe to fail to build
+# VCPKG_ROOT seems to cause confusion on Windows systems that previously used it for 
+# building OpenSSL
+removeEnvVars = ['VCPKG_ROOT', 'USE_CCACHE']
+for var in removeEnvVars:
+    if var in os.environ:
+        del os.environ[var]
+
 main()
 
