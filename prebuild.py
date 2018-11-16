@@ -16,6 +16,10 @@ import tempfile
 import time
 import urllib.request
 import functools
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 
 print = functools.partial(print, flush=True)
 
@@ -46,16 +50,24 @@ def hashFile(file):
             hasher.update(chunk)
     return hasher.hexdigest()
 
-
-def hashFolder(folder):
+# Assumes input files are in deterministic order
+def hashFiles(filenames):
     hasher = hashlib.sha256()
-    for dirName, subdirList, fileList in os.walk(folder):
-        for fname in fileList:
-            with open(os.path.join(folder, dirName, fname), "rb") as f:
-                for chunk in iter(lambda: f.read(4096), b""):
-                    hasher.update(chunk)
+    for filename in filenames:
+        with open(filename, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hasher.update(chunk)
     return hasher.hexdigest()
 
+def hashFolder(folder):
+    filenames = []
+    for dirName, subdirList, fileList in os.walk(folder):
+        for fname in fileList:
+            filenames.append(os.path.join(folder, dirName, fname))
+    # Make sure we hash the files in a determinisitic order, 
+    # regardless of how the os.walk function ordered them
+    filenames.sort()
+    return hashFiles(filenames)
 
 def downloadAndExtract(url, destPath, hash=None):
     tempFileDescriptor, tempFileName = tempfile.mkstemp()
@@ -74,6 +86,43 @@ def downloadAndExtract(url, destPath, hash=None):
         tgz.extractall(destPath)
     os.remove(tempFileName)
 
+           
+class Singleton:
+    def __init__(self, path):
+        self.fh = None
+        self.windows = 'Windows' == platform.system()
+        self.path = path
+
+    def __enter__(self):
+        success = False
+        while not success:
+            try:
+                if self.windows:
+                    if os.path.exists(self.path):
+                        os.unlink(self.path)
+                    self.fh = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR)
+                else:
+                    self.fh = open(self.path, 'x')
+                    fcntl.lockf(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                success = True
+            except EnvironmentError as err:
+                if self.fh is not None:
+                    if self.windows:
+                        os.close(self.fh)
+                    else:
+                        self.fh.close()
+                    self.fh = None
+                print("Couldn't aquire lock, retrying in 10 seconds")
+                time.sleep(10)
+        return self
+
+    def __exit__(self, type, value, traceback):
+        if self.windows:
+            os.close(self.fh)
+        else:
+            fcntl.lockf(self.fh, fcntl.LOCK_UN)
+            self.fh.close()
+        os.unlink(self.path)
 
 class VcpkgRepo:
     def __init__(self):
@@ -99,6 +148,12 @@ class VcpkgRepo:
                 os.makedirs(basePath)
             self.path = os.path.join(basePath, self.id)
 
+        lockDir, lockName = os.path.split(self.path)
+        lockName += '.lock'
+        if not os.path.isdir(lockDir):
+            os.makedirs(lockDir)
+
+        self.lockFile = os.path.join(lockDir, lockName)
         self.tagFile = os.path.join(self.path, '.id')
         # A format version attached to the tag file... increment when you want to force the build systems to rebuild 
         # without the contents of the ports changing
@@ -225,10 +280,16 @@ class VcpkgRepo:
         cmakeScript = os.path.join(self.path, 'scripts/buildsystems/vcpkg.cmake')
         installPath = os.path.join(self.path, 'installed', self.triplet)
         toolsPath = os.path.join(self.path, 'installed', self.hostTriplet, 'tools')
-        cmakeTemplate = 'set(CMAKE_TOOLCHAIN_FILE "{}" CACHE FILEPATH "Toolchain file")\n'
-        cmakeTemplate += 'set(VCPKG_INSTALL_ROOT "{}" CACHE FILEPATH "vcpkg installed packages path")\n'
-        cmakeTemplate += 'set(VCPKG_TOOLS_DIR "{}" CACHE FILEPATH "vcpkg installed packages path")\n'
-        cmakeConfig = cmakeTemplate.format(cmakeScript, installPath, toolsPath).replace('\\', '/')
+        cmakeTemplate = """set(CMAKE_TOOLCHAIN_FILE "{}" CACHE FILEPATH "Toolchain file")
+set(CMAKE_TOOLCHAIN_FILE_UNCACHED "{}")
+set(VCPKG_INSTALL_ROOT "{}")
+set(VCPKG_TOOLS_DIR "{}")
+# If the cached cmake toolchain path is different from the computed one, exit
+if(NOT (CMAKE_TOOLCHAIN_FILE_UNCACHED STREQUAL CMAKE_TOOLCHAIN_FILE))
+    message(FATAL_ERROR "CMAKE_TOOLCHAIN_FILE has changed, please wipe the build directory and rerun cmake")
+endif()
+"""
+        cmakeConfig = cmakeTemplate.format(cmakeScript, cmakeScript, installPath, toolsPath).replace('\\', '/')
         with open(configFilePath, 'w') as f:
             f.write(cmakeConfig)
 
@@ -238,11 +299,14 @@ class VcpkgRepo:
             f.write(self.tagContents)
 
 def main():
+    # Only allow one instance of the program to run at a time
+    global args
     vcpkg = VcpkgRepo()
-    vcpkg.bootstrap()
-    vcpkg.buildDependencies()
-    vcpkg.writeConfig()
-    vcpkg.writeTag()
+    with Singleton(vcpkg.lockFile) as lock:
+        vcpkg.bootstrap()
+        vcpkg.buildDependencies()
+        vcpkg.writeConfig()
+        vcpkg.writeTag()
 
 
 from argparse import ArgumentParser
@@ -262,6 +326,7 @@ removeEnvVars = ['VCPKG_ROOT', 'USE_CCACHE']
 for var in removeEnvVars:
     if var in os.environ:
         del os.environ[var]
+
 
 main()
 
