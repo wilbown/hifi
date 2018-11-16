@@ -282,10 +282,14 @@ class VcpkgRepo:
         cmakeScript = os.path.join(self.path, 'scripts/buildsystems/vcpkg.cmake')
         installPath = os.path.join(self.path, 'installed', self.triplet)
         toolsPath = os.path.join(self.path, 'installed', self.hostTriplet, 'tools')
-        cmakeTemplate = """set(CMAKE_TOOLCHAIN_FILE "{}" CACHE FILEPATH "Toolchain file")
+        cmakeTemplate = """
+set(CMAKE_TOOLCHAIN_FILE "{}" CACHE FILEPATH "Toolchain file")
 set(CMAKE_TOOLCHAIN_FILE_UNCACHED "{}")
 set(VCPKG_INSTALL_ROOT "{}")
 set(VCPKG_TOOLS_DIR "{}")
+"""
+        if not args.android:
+            cmakeTemplate += """
 # If the cached cmake toolchain path is different from the computed one, exit
 if(NOT (CMAKE_TOOLCHAIN_FILE_UNCACHED STREQUAL CMAKE_TOOLCHAIN_FILE))
     message(FATAL_ERROR "CMAKE_TOOLCHAIN_FILE has changed, please wipe the build directory and rerun cmake")
