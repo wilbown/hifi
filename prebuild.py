@@ -144,6 +144,8 @@ class VcpkgRepo:
             else:
                 defaultBasePath = os.path.join(tempfile.gettempdir(), 'hifi', 'vcpkg')
             basePath = os.getenv('HIFI_VCPKG_BASE', defaultBasePath)
+            if basePath == defaultBasePath:
+                print("Warning: Environment variable HIFI_VCPKG_BASE not set, using {}".format(defaultBasePath))
             if (not os.path.isdir(basePath)):
                 os.makedirs(basePath)
             self.path = os.path.join(basePath, self.id)
