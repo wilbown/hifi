@@ -63,9 +63,35 @@ void PlayerWindow::loadFrame() {
 }
 
 void PlayerWindow::keyPressEvent(QKeyEvent* event) {
+    bool isShifted = event->modifiers().testFlag(Qt::ShiftModifier);
+    float moveScale = isShifted ? 10.0f : 1.0f;
     switch (event->key()) {
         case Qt::Key_F1:
             loadFrame();
+            return;
+
+        case Qt::Key_W:
+            _renderThread.move(vec3{ 0, 0, -0.1f } * moveScale);
+            return;
+
+        case Qt::Key_S:
+            _renderThread.move(vec3{ 0, 0, 0.1f } * moveScale);
+            return;
+
+        case Qt::Key_A:
+            _renderThread.move(vec3{ -0.1f, 0, 0 } * moveScale);
+            return;
+
+        case Qt::Key_D:
+            _renderThread.move(vec3{ 0.1f, 0, 0 } * moveScale);
+            return;
+
+        case Qt::Key_E:
+            _renderThread.move(vec3{ 0, 0.1f, 0 } * moveScale);
+            return;
+
+        case Qt::Key_F:
+            _renderThread.move(vec3{ 0, -0.1f, 0 } * moveScale);
             return;
 
         default:
@@ -89,19 +115,36 @@ void PlayerWindow::textureLoader(const std::string& filename, const gpu::Texture
 void PlayerWindow::loadFrame(const QString& path) {
     auto frame = gpu::readFrame(path.toStdString(), _renderThread._externalTexture, &PlayerWindow::textureLoader);
     if (frame) {
+
+        {
+            for (auto& batch : frame->batches) {
+                size_t commandCount = batch->_commands.size();
+                for (size_t i = 0; i < commandCount; ++i) {
+                    const auto& command = batch->_commands[i];
+                    const auto& paramOffset = batch->_commandOffsets[i];
+                    if (command == gpu::Batch::Command::COMMAND_setIndexBuffer) {
+
+                    } else if (command == gpu::Batch::Command::COMMAND_drawIndexed) {
+
+                    } else if (command == gpu::Batch::Command::COMMAND_drawIndexedInstanced) {
+
+                    }
+                }
+            }
+        }
+
         _renderThread.submitFrame(frame);
         if (!_renderThread.isThreaded()) {
             _renderThread.process();
         }
-    }
-    if (frame->framebuffer) {
-        const auto& fbo = *frame->framebuffer;
-        glm::uvec2 size{ fbo.getWidth(), fbo.getHeight() };
-        static const glm::uvec2 maxSize{ 1280, 720 };
-        while (glm::any(glm::greaterThan(size, maxSize))) {
-            size /= 2;
+        if (frame->framebuffer) {
+            const auto& fbo = *frame->framebuffer;
+            glm::uvec2 size{ fbo.getWidth(), fbo.getHeight() };
+            static const glm::uvec2 maxSize{ 1280, 720 };
+            while (glm::any(glm::greaterThan(size, maxSize))) {
+                size /= 2;
+            }
+            resize(size.x, size.y);
         }
-        resize(size.x, size.y);
     }
-    _renderThread.submitFrame(frame);
 }

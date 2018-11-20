@@ -413,10 +413,8 @@ bool SharedObject::fetchTexture(TextureAndFence& textureAndFence) {
 }
 
 void SharedObject::setProxyWindow(QWindow* window) {
-#ifndef DISABLE_QML
     _proxyWindow = window;
     _renderControl->setRenderWindow(window);
-#endif
 }
 
 void SharedObject::wait() {

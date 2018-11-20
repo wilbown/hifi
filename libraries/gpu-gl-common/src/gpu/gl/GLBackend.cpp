@@ -392,6 +392,10 @@ void GLBackend::renderPassDraw(const Batch& batch) {
     }
 }
 
+#ifndef GL_CLIP_DISTANCE0
+#define  GL_CLIP_DISTANCE0 GL_CLIP_DISTANCE0_EXT
+#endif
+
 void GLBackend::render(const Batch& batch) {
     PROFILE_RANGE(render_gpu_gl, batch.getName().c_str());
 

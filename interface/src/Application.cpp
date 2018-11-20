@@ -641,8 +641,9 @@ void messageHandler(QtMsgType type, const QMessageLogContext& context, const QSt
                 __android_log_write(ANDROID_LOG_FATAL,"Interface",local);
                 abort();
         }
-#endif
+#else
         qApp->getLogger()->addMessage(qPrintable(logMessage));
+#endif
     }
 }
 
@@ -1102,7 +1103,9 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     installNativeEventFilter(&MyNativeEventFilter::getInstance());
 #endif
 
+#ifndef Q_OS_ANDROID
     _logger = new FileLogger(this);
+#endif
     qInstallMessageHandler(messageHandler);
 
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "styles/Inconsolata.otf");
@@ -1148,7 +1151,9 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     }
     auto accountManager = DependencyManager::get<AccountManager>();
 
+#ifndef Q_OS_ANDROID
     _logger->setSessionID(accountManager->getSessionID());
+#endif
 
     setCrashAnnotation("metaverse_session_id", accountManager->getSessionID().toString().toStdString());
     setCrashAnnotation("main_thread_id", std::to_string((size_t)QThread::currentThreadId()));
@@ -4899,7 +4904,11 @@ void Application::idle() {
     // Normally we check PipelineWarnings, but since idle will often take more than 10ms we only show these idle timing
     // details if we're in ExtraDebugging mode. However, the ::update() and its subcomponents will show their timing
     // details normally.
+#ifndef Q_OS_ANDROID
     bool showWarnings = getLogger()->extraDebugging();
+#else
+    bool showWarnings = false;
+#endif
     PerformanceWarning warn(showWarnings, "idle()");
 
     {
@@ -6206,7 +6215,7 @@ void Application::update(float deltaTime) {
     {
         PROFILE_RANGE_EX(app, "Overlays", 0xffff0000, (uint64_t)getActiveDisplayPlugin()->presentCount());
         PerformanceTimer perfTimer("overlays");
-        _overlays.update(deltaTime);
+//        _overlays.update(deltaTime);
     }
 
     // Update _viewFrustum with latest camera and view frustum data...
@@ -8040,6 +8049,7 @@ void Application::loadDomainConnectionDialog() {
 }
 
 void Application::toggleLogDialog() {
+#ifndef Q_OS_ANDROID
     if (! _logDialog) {
         _logDialog = new LogDialog(nullptr, getLogger());
     }
@@ -8049,6 +8059,7 @@ void Application::toggleLogDialog() {
     } else {
         _logDialog->show();
     }
+#endif
 }
 
 void Application::toggleEntityScriptServerLogDialog() {
@@ -8787,17 +8798,17 @@ void Application::beforeEnterBackground() {
 void Application::enterBackground() {
     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(),
                               "stop", Qt::BlockingQueuedConnection);
-    if (getActiveDisplayPlugin()->isActive()) {
-        getActiveDisplayPlugin()->deactivate();
-    }
+//    if (getActiveDisplayPlugin()->isActive()) {
+//        getActiveDisplayPlugin()->deactivate();
+//    }
 }
 
 void Application::enterForeground() {
     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(),
                                   "start", Qt::BlockingQueuedConnection);
-    if (!getActiveDisplayPlugin() || getActiveDisplayPlugin()->isActive() || !getActiveDisplayPlugin()->activate()) {
-        qWarning() << "Could not re-activate display plugin";
-    }
+//    if (!getActiveDisplayPlugin() || getActiveDisplayPlugin()->isActive() || !getActiveDisplayPlugin()->activate()) {
+//        qWarning() << "Could not re-activate display plugin";
+//    }
     auto nodeList = DependencyManager::get<NodeList>();
     nodeList->setSendDomainServerCheckInEnabled(true);
 }

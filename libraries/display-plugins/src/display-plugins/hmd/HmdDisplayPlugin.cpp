@@ -324,6 +324,7 @@ void HmdDisplayPlugin::updateFrameData() {
             if (oldFrameIndex != INVALID_FRAME) {
                 auto itr = _frameInfos.find(oldFrameIndex);
                 if (itr != _frameInfos.end()) {
+                    destroyFrameInfo(*itr);
                     _frameInfos.erase(itr);
                 }
             }
@@ -334,6 +335,12 @@ void HmdDisplayPlugin::updateFrameData() {
     }
 
     updatePresentPose();
+}
+
+void HmdDisplayPlugin::destroyFrameInfo(FrameInfo& frameInfo) {
+    if (frameInfo.extra != nullptr) {
+        qWarning() << "Failure to clean up frameinfo extra data";
+    }
 }
 
 glm::mat4 HmdDisplayPlugin::getViewCorrection() {

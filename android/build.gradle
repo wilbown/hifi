@@ -67,8 +67,9 @@ ext {
 }
 
 def baseFolder = new File(HIFI_ANDROID_PRECOMPILED)
-def appDir = new File(projectDir, 'app')
-def jniFolder = new File(appDir, 'src/main/jniLibs/arm64-v8a')
+def appDir = new File(projectDir, 'apps/interface')
+def sharedDir = appDir
+def jniFolder = new File(sharedDir, 'src/main/jniLibs/arm64-v8a')
 def baseUrl = 'https://hifi-public.s3.amazonaws.com/dependencies/android/'
 def breakpadDumpSymsDir = new File("${appDir}/build/tmp/breakpadDumpSyms")
 
@@ -117,6 +118,13 @@ def packages = [
         checksum: 'eb46d0b683e66987190ed124aabf8910',
         sharedLibFolder: 'lib',
         includeLibs: ['libnvtt.so', 'libnvmath.so', 'libnvimage.so', 'libnvcore.so'],
+    ],
+    oculus: [
+        file: 'ovr_sdk_mobile_1.19.0.zip',
+        versionId: 's_RN1vlEvUi3pnT7WPxUC4pQ0RJBs27y',
+        checksum: '98f0afb62861f1f02dd8110b31ed30eb',
+        sharedLibFolder: 'VrApi/Libs/Android/arm64-v8a/Release',
+        includeLibs: ['libvrapi.so'],
     ],
     openssl: [
         file: 'openssl-1.1.0g_armv8.tgz',
@@ -279,12 +287,11 @@ def parseQtDependencies = { List qtLibs ->
 
 def generateLibsXml = {
     def libDestinationDirectory = jniFolder
-    def jarDestinationDirectory = new File(appDir, 'libs')
-    def assetDestinationDirectory = new File(appDir, 'src/main/assets/--Added-by-androiddeployqt--');
-    def libsXmlFile = new File(appDir, 'src/main/res/values/libs.xml')
+    def jarDestinationDirectory = new File(sharedDir, 'libs')
+    def assetDestinationDirectory = new File(sharedDir, 'src/main/assets/--Added-by-androiddeployqt--');
+    def libsXmlFile = new File(sharedDir, 'src/main/res/values/libs.xml')
     def libPrefix = 'lib' + File.separator
     def jarPrefix = 'jar' + File.separator
-
     def xmlParser = new XmlParser()
     def libsXmlRoot = xmlParser.parseText('<?xml version="1.0" encoding="UTF-8"?><resources/>')
     def qtLibsNode = xmlParser.createNode(libsXmlRoot, 'array', [name: 'qt_libs'])
@@ -351,6 +358,7 @@ task verifyQt(type: Verify) { def p = packages['qt'];  src new File(baseFolder, 
 task verifyBullet(type: Verify) { def p = packages['bullet']; src new File(baseFolder, p['file']); checksum p['checksum'] }
 task verifyDraco(type: Verify) { def p = packages['draco']; src new File(baseFolder, p['file']); checksum p['checksum'] }
 task verifyGvr(type: Verify) { def p = packages['gvr']; src new File(baseFolder, p['file']); checksum p['checksum'] }
+task verifyOculus(type: Verify) { def p = packages['oculus']; src new File(baseFolder, p['file']);  checksum p['checksum'] }
 task verifyOpenSSL(type: Verify) { def p = packages['openssl']; src new File(baseFolder, p['file']);  checksum p['checksum'] }
 task verifyPolyvox(type: Verify) { def p = packages['polyvox']; src new File(baseFolder, p['file']); checksum p['checksum'] }
 task verifyTBB(type: Verify) { def p = packages['tbb']; src new File(baseFolder, p['file']); checksum p['checksum'] }
@@ -363,6 +371,7 @@ verifyDependencyDownloads.dependsOn verifyQt
 verifyDependencyDownloads.dependsOn verifyBullet
 verifyDependencyDownloads.dependsOn verifyDraco
 verifyDependencyDownloads.dependsOn verifyGvr
+verifyDependencyDownloads.dependsOn verifyOculus
 verifyDependencyDownloads.dependsOn verifyOpenSSL
 verifyDependencyDownloads.dependsOn verifyPolyvox
 verifyDependencyDownloads.dependsOn verifyTBB
@@ -438,7 +447,7 @@ task extractGvrBinaries(dependsOn: extractDependencies) {
 }
 
 def generateAssetsFileList = {
-    def assetsPath = "${appDir}/src/main/assets/"
+    def assetsPath = "${sharedDir}/src/main/assets/"
     def addedByAndroidDeployQtName = "--Added-by-androiddeployqt--/"
 
     def addedByAndroidDeployQtPath = assetsPath + addedByAndroidDeployQtName
@@ -492,28 +501,28 @@ def generateAssetsFileList = {
 task qtBundle {
     doLast {
         parseQtDependencies(QT5_DEPS)
-        def qmlImportFolder = new File("${appDir}/../../interface/resources/qml/")
-        //def qmlImportFolder = new File("${projectDir}/app/src/main/cpp")
+        def qmlImportFolder = new File("${appDir}/../../../interface/resources/qml/")
+        //def qmlImportFolder = new File("${projectDir}/apps/interface/src/main/cpp")
         scanQmlImports(qmlImportFolder)
         generateLibsXml()
         generateAssetsFileList()
    }
 }
 
-task setupDependencies(dependsOn: [copyDependencies, extractGvrBinaries, qtBundle]) { }
+task setupDependencies(dependsOn: [copyDependencies, qtBundle]) { }
 
 task cleanDependencies(type: Delete) {
     delete HIFI_ANDROID_PRECOMPILED
-    delete 'app/src/main/jniLibs/arm64-v8a'
-    delete 'app/src/main/assets/--Added-by-androiddeployqt--'
-    delete 'app/src/main/res/values/libs.xml'
+    delete 'shared/src/main/jniLibs/arm64-v8a'
+    delete 'shared/src/main/assets/--Added-by-androiddeployqt--'
+    delete 'shared/src/main/res/values/libs.xml'
 }
 
 def runBreakpadDumpSyms = { buildType ->
     gradle.startParameter.showStacktrace = ShowStacktrace.ALWAYS
 
-    def objDir = new File("${appDir}/build/intermediates/cmake/${buildType}/obj/arm64-v8a")
-    def stripDebugSymbol = "${appDir}/build/intermediates/transforms/stripDebugSymbol/${buildType}/0/lib/arm64-v8a/"
+    def objDir = new File("${sharedDir}/build/intermediates/cmake/${buildType}/obj/arm64-v8a")
+    def stripDebugSymbol = "${sharedDir}/build/intermediates/transforms/stripDebugSymbol/${buildType}/0/lib/arm64-v8a/"
     def outputDir = new File(breakpadDumpSymsDir, buildType)
     if (!outputDir.exists()) {
         outputDir.mkdirs()

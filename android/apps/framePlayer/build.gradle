@@ -1,0 +1,71 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+buildscript {
+    repositories {
+        google()
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:3.2.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        jcenter()
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    signingConfigs {
+        release {
+            keyAlias 'key0'
+            keyPassword 'password'
+            storeFile file('C:/android/keystore.jks')
+            storePassword 'password'
+        }
+    }
+    compileSdkVersion 28
+    defaultConfig {
+        applicationId "io.highfidelity.frameplayer"
+        minSdkVersion 25
+        targetSdkVersion 28
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake {
+                arguments '-DHIFI_ANDROID=1',
+                    '-DANDROID_PLATFORM=android-24',
+                    '-DANDROID_TOOLCHAIN=clang',
+                    '-DANDROID_STL=c++_shared',
+                    '-DQT_CMAKE_PREFIX_PATH=' + HIFI_ANDROID_PRECOMPILED + '/qt/lib/cmake',
+                    '-DHIFI_ANDROID_APP=framePlayer',
+                    '-DHIFI_ANDROID_PRECOMPILED=' + HIFI_ANDROID_PRECOMPILED;
+            }
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.release
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path '../../../CMakeLists.txt'
+        }
+    }
+}
+
+dependencies {
+    implementation project(':oculus')
+    implementation project(':qt')
+}

@@ -1,0 +1,8 @@
+if (ANDROID)
+    set(TARGET_NAME oculusMobile)
+    setup_hifi_library(AndroidExtras)
+    target_egl()
+    target_glad()
+    target_oculus_mobile()
+    target_link_libraries(${TARGET_NAME} android log)
+endif()

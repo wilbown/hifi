@@ -804,7 +804,11 @@ Menu::Menu() {
     connect(action, &QAction::triggered, qApp, []() { std::thread(crash::newFault).join(); });
 
     // Developer > Show Statistics
+#ifdef DEBUG
+    addCheckableActionToQMenuAndActionHash(developerMenu, MenuOption::Stats, 0, true);
+#else
     addCheckableActionToQMenuAndActionHash(developerMenu, MenuOption::Stats);
+#endif
 
     // Developer > Show Animation Statistics
     addCheckableActionToQMenuAndActionHash(developerMenu, MenuOption::AnimStats);

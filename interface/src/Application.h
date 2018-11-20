@@ -249,7 +249,9 @@ public:
 
     void setActiveDisplayPlugin(const QString& pluginName);
 
+#ifndef Q_OS_ANDROID
     FileLogger* getLogger() const { return _logger; }
+#endif
 
     float getRenderResolutionScale() const;
 
@@ -661,7 +663,9 @@ private:
     QPointer<LogDialog> _logDialog;
     QPointer<EntityScriptServerLogDialog> _entityScriptServerLogDialog;
 
+#ifndef Q_OS_ANDROID
     FileLogger* _logger;
+#endif
 
     TouchEvent _lastTouchEvent;
 

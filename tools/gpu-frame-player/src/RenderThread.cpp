@@ -20,6 +20,11 @@ void RenderThread::resize(const QSize& newSize) {
     _pendingSize.push(newSize);
 }
 
+void RenderThread::move(const glm::vec3& v) {
+    std::unique_lock<std::mutex> lock(_frameLock);
+    _correction = glm::inverse(glm::translate(mat4(), v)) * _correction;
+}
+
 void RenderThread::initialize(QWindow* window) {
     std::unique_lock<std::mutex> lock(_frameLock);
     setObjectName("RenderThread");
@@ -105,6 +110,13 @@ void RenderThread::renderFrame(gpu::FramePointer& frame) {
 #ifdef USE_GL
     _context.makeCurrent();
 #endif
+    if (_correction != glm::mat4()) {
+       std::unique_lock<std::mutex> lock(_frameLock);
+       if (_correction != glm::mat4()) {
+           _backend->setCameraCorrection(_correction, _activeFrame->view);
+           //_prevRenderView = _correction * _activeFrame->view;
+       }
+    }
     _backend->recycle();
     _backend->syncCache();
 
@@ -139,18 +151,29 @@ void RenderThread::renderFrame(gpu::FramePointer& frame) {
     using namespace vks::debug::marker;
     beginRegion(commandBuffer, "executeFrame", glm::vec4{ 1, 1, 1, 1 });
 #endif
+    auto& glbackend = (gpu::gl::GLBackend&)(*_backend);
+    glm::uvec2 fboSize{ frame->framebuffer->getWidth(), frame->framebuffer->getHeight() };
+    auto fbo = glbackend.getFramebufferID(frame->framebuffer);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbo);
+    glClearColor(0, 0, 0, 1);
+    glClearDepth(0);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
+    //_gpuContext->enableStereo(true);
     if (frame && !frame->batches.empty()) {
         _gpuContext->executeFrame(frame);
     }
 
 #ifdef USE_GL
-    auto& glbackend = (gpu::gl::GLBackend&)(*_backend);
-    glm::uvec2 fboSize{ frame->framebuffer->getWidth(), frame->framebuffer->getHeight() };
-    auto fbo = glbackend.getFramebufferID(frame->framebuffer);
-    glDisable(GL_FRAMEBUFFER_SRGB);
-    glBlitNamedFramebuffer(fbo, 0, 0, 0, fboSize.x, fboSize.y, 0, 0, windowSize.width(), windowSize.height(),
-                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    //glDisable(GL_FRAMEBUFFER_SRGB);
+    //glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(
+        0, 0, fboSize.x, fboSize.y, 
+        0, 0, windowSize.width(), windowSize.height(),
+        GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
     (void)CHECK_GL_ERROR();
     _context.swapBuffers();
@@ -183,11 +206,26 @@ bool RenderThread::process() {
         pendingFrames.swap(_pendingFrames);
         pendingSize.swap(_pendingSize);
     }
-
+    
     while (!pendingFrames.empty()) {
         _activeFrame = pendingFrames.front();
-        _gpuContext->consumeFrameUpdates(_activeFrame);
         pendingFrames.pop();
+        _gpuContext->consumeFrameUpdates(_activeFrame);
+        _activeFrame->stereoState._enable = true;
+
+        auto& eyeProjections = _activeFrame->stereoState._eyeProjections;
+        eyeProjections[0][0] = vec4{ 0.759056330, 0.000000000, 0.000000000, 0.000000000 };
+        eyeProjections[0][1] = vec4{ 0.000000000, 0.682773232, 0.000000000, 0.000000000 };
+        eyeProjections[0][2] = vec4{ -0.0580431037, -0.00619550655, -1.00000489, -1.00000000 };
+        eyeProjections[0][3] = vec4{ 0.000000000, 0.000000000, -0.0800003856, 0.000000000 };
+        eyeProjections[1][0] = vec4{ 0.752847493, 0.000000000, 0.000000000, 0.000000000 };
+        eyeProjections[1][1] = vec4{ 0.000000000, 0.678060353, 0.000000000, 0.000000000 };
+        eyeProjections[1][2] = vec4{ 0.0578232110, -0.00669418881, -1.00000489, -1.000000000 };
+        eyeProjections[1][3] = vec4{ 0.000000000, 0.000000000, -0.0800003856, 0.000000000 };
+
+        auto& eyeOffsets = _activeFrame->stereoState._eyeViews;
+        eyeOffsets[0][3] = vec4{ -0.0327499993, 0.0, -0.0149999997, 1.0 };
+        eyeOffsets[1][3] = vec4{ 0.0327499993, 0.0, -0.0149999997, 1.0 };
     }
 
     while (!pendingSize.empty()) {

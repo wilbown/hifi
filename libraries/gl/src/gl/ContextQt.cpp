@@ -77,6 +77,8 @@ void Context::setupDebugLogging(QOpenGLContext *context) {
     }
 }
 
+
+#if !defined(GL_CUSTOM_CONTEXT)
 bool Context::makeCurrent() {
     updateSwapchainMemoryCounter();
     bool result = _qglContext->makeCurrent(_window);
@@ -93,6 +95,7 @@ void Context::doneCurrent() {
         _qglContext->doneCurrent();
     }
 }
+#endif
 
 Q_GUI_EXPORT QOpenGLContext *qt_gl_global_share_context();
 const QSurfaceFormat& getDefaultOpenGLSurfaceFormat();

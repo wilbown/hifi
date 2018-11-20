@@ -40,10 +40,12 @@ void OctreePacketProcessor::processPacket(QSharedPointer<ReceivedMessage> messag
 
     const int WAY_BEHIND = 300;
 
+#ifndef Q_OS_ANDROID
     if (packetsToProcessCount() > WAY_BEHIND && qApp->getLogger()->extraDebugging()) {
         qDebug("OctreePacketProcessor::processPacket() packets to process=%d", packetsToProcessCount());
     }
-    
+#endif
+
     bool wasStatsPacket = false;
 
     PacketType octreePacketType = message->getType();

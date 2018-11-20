@@ -176,9 +176,9 @@ void getCurrentGLState(State::Data& state) {
         glGetIntegerv(GL_FRONT_FACE, &winding);
         state.flags.frontFaceClockwise = (winding == GL_CW);
 #if defined(USE_GLES)
-        state.multisampleEnable = glIsEnabled(GL_MULTISAMPLE_EXT);
-        state.antialisedLineEnable = false;
-        state.depthClampEnable = false;
+        state.flags.multisampleEnable = glIsEnabled(GL_MULTISAMPLE_EXT);
+        state.flags.antialisedLineEnable = false;
+        state.flags.depthClampEnable = false;
 #else
         state.flags.multisampleEnable = glIsEnabled(GL_MULTISAMPLE);
         state.flags.antialisedLineEnable = glIsEnabled(GL_LINE_SMOOTH);

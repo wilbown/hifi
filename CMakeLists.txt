@@ -12,7 +12,7 @@ target_python()
 
 if (HIFI_ANDROID )
     execute_process(
-        COMMAND ${HIFI_PYTHON_EXEC} ${CMAKE_CURRENT_SOURCE_DIR}/prebuild.py --android --build-root ${CMAKE_BINARY_DIR}
+        COMMAND ${HIFI_PYTHON_EXEC} ${CMAKE_CURRENT_SOURCE_DIR}/prebuild.py --android ${HIFI_ANDROID_APP} --build-root ${CMAKE_BINARY_DIR}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     )
 else()
@@ -106,6 +106,12 @@ option(
 
 set(PLATFORM_QT_GL OpenGL)
 
+if (ANDROID)
+  set(OCULUS_MOBILE 1)
+  set(OCULUS_QUEST 1)
+  add_definitions(-DUSE_QUEST)
+endif()
+
 if (USE_GLES)
   add_definitions(-DUSE_GLES)
   set(PLATFORM_GL_BACKEND gpu-gl-common gpu-gles)
@@ -174,7 +180,7 @@ set_packaging_parameters()
 
 # FIXME hack to work on the proper Android toolchain
 if (ANDROID)
-  add_subdirectory(android/app)
+  add_subdirectory(android/apps/${HIFI_ANDROID_APP})
   return()
 endif()
 
