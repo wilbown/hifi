@@ -1,6 +1,6 @@
 
 macro(target_oculus_mobile)
-    set(INSTALL_DIR ${HIFI_ANDROID_PRECOMPILED}/ovr/VrApi)
+    set(INSTALL_DIR ${HIFI_ANDROID_PRECOMPILED}/oculus/VrApi)
     set(OVR_MOBILE_INCLUDE_DIRS ${INSTALL_DIR}/Include)
     set(OVR_LIBRARY_DIR  ${INSTALL_DIR}/Libs/Android/arm64-v8a)
     set(OVR_MOBILE_LIBRARY_RELEASE ${OVR_LIBRARY_DIR}/Release/libvrapi.so)

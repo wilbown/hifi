@@ -92,3 +92,5 @@ interface/resources/GPUCache/*
 
 # package lock file for JSDoc tool
 tools/jsdoc/package-lock.json
+
+**/__pycache__
