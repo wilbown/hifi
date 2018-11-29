@@ -258,7 +258,7 @@ class QtPackager:
                 ET.SubElement(bundledAssetsNode, 'item').text = value
                 destinationFile = os.path.join(self.assetPath, relativePath)
 
-            destinationParent = os.path.realpath(os.path.join(destinationFile, os.path.pardir))
+            destinationParent = os.path.realpath(os.path.dirname(destinationFile))
             if not os.path.isdir(destinationParent):
                 os.makedirs(destinationParent)
             if not os.path.isfile(destinationFile):

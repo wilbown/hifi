@@ -47,7 +47,7 @@ static Stats* INSTANCE{ nullptr };
 QString getTextureMemoryPressureModeString();
 #endif
 Stats* Stats::getInstance() {
-    Q_ASSERT(INSTANCE);
+    //Q_ASSERT(INSTANCE);
     return INSTANCE;
 }
 
