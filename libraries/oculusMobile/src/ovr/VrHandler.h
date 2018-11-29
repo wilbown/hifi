@@ -26,10 +26,10 @@ public:
     using OvrJavaTask = std::function<void(const ovrJava*)>;
     static void setHandler(VrHandler* handler);
 
+    static bool withOvrMobile(const OvrMobileTask& task);
 protected:
     static void initVr();
     static void shutdownVr();
-    static bool withOvrMobile(const OvrMobileTask& task);
     static bool withOvrJava(const OvrJavaTask& task);
     void presentFrame(uint32_t textureId, const glm::uvec2& size, const ovrTracking2& tracking) const;
     ovrTracking2 beginFrame();
