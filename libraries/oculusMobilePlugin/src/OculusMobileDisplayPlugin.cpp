@@ -190,7 +190,7 @@ bool OculusMobileDisplayPlugin::beginFrameRender(uint32_t frameIndex) {
 
     VrHandler::withOvrMobile([&](ovrMobile* session){
         if (resetTrackingTransform) {
-            auto pose = vrapi_GetTrackingTransform( session, VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL);
+            auto pose = vrapi_GetTrackingTransform( session, VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_FLOOR_LEVEL);
             transformOffset = glm::inverse(ovr::toGlm(pose));
             vrapi_SetTrackingTransform( session, pose);
             resetTrackingTransform = false;
