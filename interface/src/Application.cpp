@@ -1792,7 +1792,6 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         userInputMapper->registerDevice(_touchscreenVirtualPadDevice->getInputDevice());
     }
 
-#if 0
     {
         auto scriptEngines = DependencyManager::get<ScriptEngines>().data();
         // this will force the model the look at the correct directory (weird order of operations issue)
@@ -1814,7 +1813,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
             scriptEngines->loadScripts();
         }
     }
-#endif
+
 
     // Make sure we don't time out during slow operations at startup
     updateHeartbeat();
@@ -3576,10 +3575,14 @@ void Application::handleSandboxStatus(QNetworkReply* reply) {
     }
 
     // Get controller availability
+    #ifdef Q_OS_ANDROID
+    bool hasHandControllers = true;
+    #else
     bool hasHandControllers = false;
     if (PluginUtils::isViveControllerAvailable() || PluginUtils::isOculusTouchControllerAvailable()) {
         hasHandControllers = true;
     }
+    #endif
 
     // Check HMD use (may be technically available without being in use)
     bool hasHMD = PluginUtils::isHMDAvailable();

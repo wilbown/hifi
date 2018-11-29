@@ -275,9 +275,12 @@ void OculusMobileControllerManager::checkForConnectedDevices() {
         return;
     }
 
-    qWarning() << "QQQ" << __FUNCTION__;
     ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
         oculusMobileControllers = OculusMobileInputDevice::check(session);
+        if (oculusMobileControllers) {
+            auto userInputMapper = DependencyManager::get<controller::UserInputMapper>();
+            userInputMapper->registerDevice(oculusMobileControllers);
+        }
     });
 }
 
