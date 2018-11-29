@@ -166,6 +166,7 @@ class QtPackager:
         self.qtRootPath = qtRootPath
         self.jniPath = os.path.join(self.appPath, 'src/main/jniLibs/arm64-v8a')
         self.assetPath = os.path.join(self.appPath, 'src/main/assets')
+        self.qtAssetPath = os.path.join(self.assetPath, '--Added-by-androiddeployqt--')
         # Jars go into the qt library
         self.jarPath = os.path.realpath(os.path.join(self.appPath, '../../libraries/qt/libs'))
         self.xmlFile = os.path.join(self.appPath, 'src/main/res/values/libs.xml')
@@ -218,14 +219,20 @@ class QtPackager:
             if 'path' not in item:
                 print("Warning: QML import could not be resolved in any of the import paths: {}".format(item['name']))
                 continue
-            path = os.path.normcase(os.path.realpath(item['path']))
+            path = os.path.realpath(item['path'])
             if not os.path.exists(path):
                 continue
-            if path.startswith(qmlRootPath):
+            basePath = path
+            if os.path.isfile(basePath):
+                basePath = os.path.dirname(basePath)
+            basePath = os.path.normcase(basePath)
+            if basePath.startswith(qmlRootPath):
                 continue
             self.files.extend(hifi_utils.recursiveFileList(path))
 
     def processFiles(self):
+        self.files = list(set(self.files))
+        self.files.sort()
         libsXmlRoot = ET.Element('resources')
         qtLibsNode = ET.SubElement(libsXmlRoot, 'array', {'name':'qt_libs'})
         bundledLibsNode = ET.SubElement(libsXmlRoot, 'array', {'name':'bundled_in_lib'})
@@ -256,7 +263,7 @@ class QtPackager:
             else:
                 value = "--Added-by-androiddeployqt--/{}:{}".format(relativePath,relativePath).replace('\\', '/')
                 ET.SubElement(bundledAssetsNode, 'item').text = value
-                destinationFile = os.path.join(self.assetPath, relativePath)
+                destinationFile = os.path.join(self.qtAssetPath, relativePath)
 
             destinationParent = os.path.realpath(os.path.dirname(destinationFile))
             if not os.path.isdir(destinationParent):
@@ -268,7 +275,7 @@ class QtPackager:
         tree.write(self.xmlFile, 'UTF-8', True)
 
     def bundle(self):
-        if not os.path.isfile(self.xmlFile):
+        if not os.path.isfile(self.xmlFile) or True:
             self.copyQtDeps()
             self.scanQmlImports()
             self.processFiles()

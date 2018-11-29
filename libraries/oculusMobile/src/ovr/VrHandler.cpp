@@ -112,6 +112,8 @@ struct VrSurface : public TaskQueue {
                 modeParms.ShareContext = (unsigned long long) vrglContext.context;
                 modeParms.WindowSurface = (unsigned long long) oculusActivityWrapper->_nativeWindow;
                 session = vrapi_EnterVrMode(&modeParms);
+                ovrPosef trackingTransform = vrapi_GetTrackingTransform( session, VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL);
+                vrapi_SetTrackingTransform( session, trackingTransform );
             }
         }
     }

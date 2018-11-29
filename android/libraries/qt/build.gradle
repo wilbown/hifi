@@ -18,4 +18,5 @@ android {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
+    api 'com.google.guava:guava:23.0'
 }

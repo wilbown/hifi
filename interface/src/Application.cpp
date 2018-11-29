@@ -1792,6 +1792,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         userInputMapper->registerDevice(_touchscreenVirtualPadDevice->getInputDevice());
     }
 
+#if 0
     {
         auto scriptEngines = DependencyManager::get<ScriptEngines>().data();
         // this will force the model the look at the correct directory (weird order of operations issue)
@@ -1813,6 +1814,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
             scriptEngines->loadScripts();
         }
     }
+#endif
 
     // Make sure we don't time out during slow operations at startup
     updateHeartbeat();
@@ -6652,11 +6654,11 @@ void Application::resetSensors(bool andReload) {
 }
 
 void Application::hmdVisibleChanged(bool visible) {
-    if (visible) {
-        QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(), "start", Qt::QueuedConnection);
-    } else {
-        QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(), "stop", Qt::QueuedConnection);
-    }
+    // if (visible) {
+    //     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(), "start", Qt::QueuedConnection);
+    // } else {
+    //     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(), "stop", Qt::QueuedConnection);
+    // }
 }
 
 void Application::updateWindowTitle() const {

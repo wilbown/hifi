@@ -184,20 +184,37 @@ static void goToDevMobile() {
 bool OculusMobileDisplayPlugin::beginFrameRender(uint32_t frameIndex) {
     bool result = false;
     _currentRenderFrameInfo = FrameInfo();
+    auto trackingStatePtr = new ovrTracking2();
+    static bool resetTrackingTransform = true;
+    static glm::mat4 transformOffset;
+
     VrHandler::withOvrMobile([&](ovrMobile* session){
+        if (resetTrackingTransform) {
+            auto pose = vrapi_GetTrackingTransform( session, VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL);
+            transformOffset = glm::inverse(ovr::toGlm(pose));
+            vrapi_SetTrackingTransform( session, pose);
+            resetTrackingTransform = false;
+        }
         _currentRenderFrameInfo.predictedDisplayTime = vrapi_GetPredictedDisplayTime(session, vrPresentIndex);
-        auto trackingStatePtr = new ovrTracking2();
-        auto& trackingState = *trackingStatePtr = vrapi_GetPredictedTracking2(session, _currentRenderFrameInfo.predictedDisplayTime);
-        _currentRenderFrameInfo.extra = trackingStatePtr;
-        _currentRenderFrameInfo.sensorSampleTime = trackingState.HeadPose.TimeInSeconds;
-        _currentRenderFrameInfo.renderPose = ovr::toGlm(trackingState.HeadPose.Pose);
-        _currentRenderFrameInfo.presentPose = _currentRenderFrameInfo.renderPose;
+        *trackingStatePtr = vrapi_GetPredictedTracking2(session, _currentRenderFrameInfo.predictedDisplayTime);
         result = true;
     });
 
+
+
     if (result) {
         withNonPresentThreadLock([&] {
+            auto& trackingState = *trackingStatePtr;
+            _currentRenderFrameInfo.extra = trackingStatePtr;
+            _currentRenderFrameInfo.sensorSampleTime = trackingState.HeadPose.TimeInSeconds;
+            _currentRenderFrameInfo.renderPose = transformOffset * ovr::toGlm(trackingState.HeadPose.Pose);
+            _currentRenderFrameInfo.presentPose = _currentRenderFrameInfo.renderPose;
             _frameInfos[frameIndex] = _currentRenderFrameInfo;
+            _ipd = vrapi_GetInterpupillaryDistance(&trackingState);
+            ovr::for_each_eye([&](ovrEye eye){
+                _eyeProjections[eye] = ovr::toGlm(trackingState.Eye[eye].ProjectionMatrix);
+                _eyeOffsets[eye] = glm::translate(mat4(), vec3{ _ipd * (eye == VRAPI_EYE_LEFT ? -0.5f : 0.5f), 0.0f, 0.0f });
+            });
        });
     }
 
