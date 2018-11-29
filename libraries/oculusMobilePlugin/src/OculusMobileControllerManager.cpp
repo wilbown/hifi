@@ -164,7 +164,6 @@ public:
     bool triggerHapticPulse(float strength, float duration, controller::Hand hand) override;
 
 private:
-    void stopHapticPulse(bool leftHand);
     void handlePose(float deltaTime, const controller::InputCalibrationData& inputCalibrationData,
                     ovrHandedness hand, const ovrRigidBodyPosef& handPose);
     void handleRotationForUntrackedHand(const controller::InputCalibrationData& inputCalibrationData,
@@ -178,13 +177,15 @@ private:
     template <typename F>
     void withLock(F&& f) { Locker locker(_lock); f(); }
 
-    float _leftHapticDuration { 0.0f };
-    float _leftHapticStrength { 0.0f };
-    float _rightHapticDuration { 0.0f };
-    float _rightHapticStrength { 0.0f };
     mutable std::recursive_mutex _lock;
     ovrTracking2 _headTracking;
     struct HandData {
+        HandData() {
+            state.Header.ControllerType =ovrControllerType_TrackedRemote;
+        }
+
+        float hapticDuration { 0.0f };
+        float hapticStrength { 0.0f };
         bool valid{ false };
         bool lostTracking{ false };
         quint64 regainTrackingDeadline;
@@ -194,6 +195,28 @@ private:
         ovrResult stateResult{ ovrError_NotInitialized };
         ovrTracking tracking;
         ovrResult trackingResult{ ovrError_NotInitialized };
+        bool setHapticFeedback(float strength, float duration) {
+            bool success = true;
+            bool sessionSuccess = ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
+                if (strength == 0.0f) {
+                    hapticStrength = 0.0f;
+                    hapticDuration = 0.0f;
+                } else {
+                    hapticStrength = (duration > hapticDuration) ? strength : hapticStrength;
+                    if (vrapi_SetHapticVibrationSimple(session, caps.Header.DeviceID, hapticStrength) != ovrSuccess) {
+                        success = false;
+                    }
+                    hapticDuration = std::max(duration, hapticDuration);
+                }
+            });
+            return success && sessionSuccess;
+        }
+
+        void stopHapticPulse() {
+            bool sessionSuccess = ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
+                vrapi_SetHapticVibrationSimple(session, caps.Header.DeviceID, 0.0f);
+            });
+        }
 
         bool isValid() const {
             return (stateResult == ovrSuccess) && (trackingResult == ovrSuccess);
@@ -426,15 +449,12 @@ void OculusMobileInputDevice::update(float deltaTime, const controller::InputCal
     // Haptics
     {
         Locker locker(_lock);
-        if (_leftHapticDuration > 0.0f) {
-            _leftHapticDuration -= deltaTime * 1000.0f; // milliseconds
-        } else {
-            stopHapticPulse(true);
-        }
-        if (_rightHapticDuration > 0.0f) {
-            _rightHapticDuration -= deltaTime * 1000.0f; // milliseconds
-        } else {
-            stopHapticPulse(false);
+        for (auto& hand : _hands) {
+            if (hand.hapticDuration) {
+                hand.hapticDuration -= deltaTime * 1000.0f; // milliseconds
+            } else {
+                hand.stopHapticPulse();
+            }
         }
     }
 }
@@ -487,42 +507,15 @@ void OculusMobileInputDevice::handleRotationForUntrackedHand(const controller::I
 }
 
 bool OculusMobileInputDevice::triggerHapticPulse(float strength, float duration, controller::Hand hand) {
-//    Locker locker(_lock);
-//    bool toReturn = true;
-//    ovr::withSession([&](ovrSession session) {
-//        if (hand == controller::BOTH || hand == controller::LEFT) {
-//            if (strength == 0.0f) {
-//                _leftHapticStrength = 0.0f;
-//                _leftHapticDuration = 0.0f;
-//            } else {
-//                _leftHapticStrength = (duration > _leftHapticDuration) ? strength : _leftHapticStrength;
-//                if (ovr_SetControllerVibration(session, ovrControllerType_LTouch, 1.0f, _leftHapticStrength) != ovrSuccess) {
-//                    toReturn = false;
-//                }
-//                _leftHapticDuration = std::max(duration, _leftHapticDuration);
-//            }
-//        }
-//        if (hand == controller::BOTH || hand == controller::RIGHT) {
-//            if (strength == 0.0f) {
-//                _rightHapticStrength = 0.0f;
-//                _rightHapticDuration = 0.0f;
-//            } else {
-//                _rightHapticStrength = (duration > _rightHapticDuration) ? strength : _rightHapticStrength;
-//                if (ovr_SetControllerVibration(session, ovrControllerType_RTouch, 1.0f, _rightHapticStrength) != ovrSuccess) {
-//                    toReturn = false;
-//                }
-//                _rightHapticDuration = std::max(duration, _rightHapticDuration);
-//            }
-//        }
-//    });
-//    return toReturn;
-}
-
-void OculusMobileInputDevice::stopHapticPulse(bool leftHand) {
-//    auto handType = (leftHand ? ovrControllerType_LTouch : ovrControllerType_RTouch);
-//    ovr::withSession([&](ovrSession session) {
-//        ovr_SetControllerVibration(session, handType, 0.0f, 0.0f);
-//    });
+    Locker locker(_lock);
+    bool success = true;
+    if (hand == controller::BOTH || hand == controller::LEFT) {
+        success &= _hands[0].setHapticFeedback(strength, duration);
+    }
+    if (hand == controller::BOTH || hand == controller::RIGHT) {
+        success &= _hands[0].setHapticFeedback(strength, duration);
+    }
+    return success;
 }
 
 /**jsdoc
@@ -652,6 +645,7 @@ OculusMobileInputDevice::OculusMobileInputDevice(ovrMobile* session, const std::
             continue;
         }
         HandData& handData = _hands[handIndex];
+        handData.state.Header.ControllerType = ovrControllerType_TrackedRemote;
         handData.valid = true;
         handData.caps = deviceCaps;
         handData.update(session);
