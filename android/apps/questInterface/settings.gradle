@@ -1,5 +1,0 @@
-include ':oculus'
-project(':oculus').projectDir = new File(settingsDir, '../../libraries/oculus')
-
-include ':qt'
-project(':qt').projectDir = new File(settingsDir, '../../libraries/qt')

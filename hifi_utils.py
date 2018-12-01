@@ -1,16 +1,15 @@
 import os
-import functools
 import hashlib
+import platform
 import shutil
 import ssl
 import subprocess
 import sys
 import tarfile
 import urllib
+import urllib.request
 import zipfile
 import tempfile
-
-print = functools.partial(print, flush=True)
 
 def scriptRelative(*paths):
     scriptdir = os.path.dirname(os.path.realpath(sys.argv[0]))
@@ -81,18 +80,32 @@ def hashFolder(folder):
     filenames = recursiveFileList(folder)
     return hashFiles(filenames)
 
-def downloadAndExtract(url, destPath, hash=None, hasher = hashlib.sha512(), isZip=False):
-    tempFileDescriptor, tempFileName = tempfile.mkstemp()
-    # OSX Python doesn't support SSL, so we need to bypass it.  
-    # However, we still validate the downloaded file's sha512 hash
-    context = ssl._create_unverified_context()
-    with urllib.request.urlopen(url, context=context) as response, open(tempFileDescriptor, 'wb') as tempFile:
-        shutil.copyfileobj(response, tempFile)
+def downloadFile(url, hash=None, hasher=hashlib.sha512(), retries=3):
+    for i in range(retries):
+        tempFileName = None
+        # OSX Python doesn't support SSL, so we need to bypass it.  
+        # However, we still validate the downloaded file's sha512 hash
+        if 'Darwin' == platform.system():
+            tempFileDescriptor, tempFileName = tempfile.mkstemp()
+            context = ssl._create_unverified_context()
+            with urllib.request.urlopen(url, context=context) as response, open(tempFileDescriptor, 'wb') as tempFile:
+                shutil.copyfileobj(response, tempFile)
+        else:
+            tempFileName, headers = urllib.request.urlretrieve(url)
 
-    # Verify the hash
-    if hash and hash != hashFile(tempFileName, hasher):
-        raise RuntimeError("Downloaded file does not match hash")
-        
+        downloadHash = hashFile(tempFileName, hasher)
+        # Verify the hash
+        if hash is not None and hash != downloadHash:
+            print("Try {}: Downloaded file {} hash {} does not match expected hash {} for url {}".format(i + 1, tempFileName, downloadHash, hash, url))
+            os.remove(tempFileName)
+            continue
+        return tempFileName
+
+    raise RuntimeError("Downloaded file hash {} does not match expected hash {} for\n{}".format(downloadHash, hash, url))
+
+
+def downloadAndExtract(url, destPath, hash=None, hasher=hashlib.sha512(), isZip=False):
+    tempFileName = downloadFile(url, hash, hasher)
     if isZip:
         with zipfile.ZipFile(tempFileName) as zip:
             zip.extractall(destPath)

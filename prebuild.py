@@ -1,7 +1,20 @@
 #!python
 
-import os
-import sys
+# The prebuild script is intended to simplify life for developers and dev-ops.  It's repsonsible for acquiring 
+# tools required by the build as well as dependencies on which we rely.  
+# 
+# By using this script, we can reduce the requirements for a developer getting started to:
+#
+# * A working C++ dev environment like visual studio, xcode, gcc, or clang
+# * Qt 
+# * CMake
+# * Python 3.x
+#
+# The function of the build script is to acquire, if not already present, all the other build requirements
+# The build script should be idempotent.  If you run it with the same arguments multiple times, that should 
+# have no negative impact on the subsequent build times (i.e. re-running the prebuild script should not 
+# trigger a header change that causes files to be rebuilt).  Subsequent runs after the first run should 
+# execute quickly, determining that no work is to be done
 
 import hifi_singleton
 import hifi_utils
@@ -21,7 +34,9 @@ import sys
 import re
 import tempfile
 import time
+import functools
 
+print = functools.partial(print, flush=True)
 
 def parse_args():
     # our custom ports, relative to the script location
@@ -56,8 +71,23 @@ def main():
     with hifi_singleton.Singleton(pm.lockFile) as lock:
         if not pm.upToDate():
             pm.bootstrap()
-            pm.setupDependencies()
 
+        # Always write the tag, even if we changed nothing.  This 
+        # allows vcpkg to reclaim disk space by identifying directories with
+        # tags that haven't been touched in a long time
+        pm.writeTag()
+
+        # Grab our required dependencies:
+        #  * build host tools, like spirv-cross and scribe
+        #  * build client dependencies like openssl and nvtt
+        pm.setupDependencies()
+
+        # wipe out the build directories (after writing the tag, since failure 
+        # here shouldn't invalidte the vcpkg install)
+        pm.cleanBuilds()
+
+        # If we're running in android mode, we also need to grab a bunch of additional binaries
+        # (this logic is all migrated from the old setupDependencies tasks in gradle)
         if args.android:
             # Find the target location
             appPath = hifi_utils.scriptRelative('android/apps/' + args.android)
@@ -67,7 +97,7 @@ def main():
             qtPath = os.path.join(pm.androidPackagePath, 'qt')
             hifi_android.QtPackager(appPath, qtPath).bundle()
 
-        pm.writeTag()
+        # Write the vcpkg config to the build directory last
         pm.writeConfig()
 
 print(sys.argv)

@@ -156,14 +156,17 @@ endif()
         self.run(['install', '--triplet', self.hostTriplet, 'hifi-host-tools'])
 
         # Special case for android, grab a bunch of binaries
-        # Migrate the gradle work here
+        # FIXME remove special casing for android builds eventually
         if self.args.android:
             print("Installing Android binaries")
             self.setupAndroidDependencies()
-        else:
+
+        # If not android, install the hifi-client-deps libraries
+        if not self.args.android:
             print("Installing build dependencies")
             self.run(['install', '--triplet', self.triplet, 'hifi-client-deps'])
 
+    def cleanBuilds(self):
         # Remove temporary build artifacts
         builddir = os.path.join(self.path, 'buildtrees')
         if os.path.isdir(builddir):

@@ -1,13 +1,3 @@
-import de.undercouch.gradle.tasks.download.Download
-import de.undercouch.gradle.tasks.download.Verify
-import groovy.io.FileType
-import groovy.json.JsonSlurper
-import groovy.xml.XmlUtil
-import org.apache.tools.ant.taskdefs.condition.Os
-
-import java.util.regex.Matcher
-import java.util.regex.Pattern
-
 buildscript {
     repositories {
         jcenter()
@@ -18,12 +8,6 @@ buildscript {
     }
 }
 
-plugins {
-    id 'de.undercouch.download' version '3.3.0'
-    id "cz.malohlava" version "1.0.3"
-    id "io.github.http-builder-ng.http-plugin" version "0.1.1"
-}
-
 allprojects {
     repositories {
         jcenter()
@@ -32,594 +16,121 @@ allprojects {
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
-}
-
 ext {
     RELEASE_NUMBER = project.hasProperty('RELEASE_NUMBER') ? project.getProperty('RELEASE_NUMBER') : '0'
     VERSION_CODE = project.hasProperty('VERSION_CODE') ? project.getProperty('VERSION_CODE') : '0'
     RELEASE_TYPE = project.hasProperty('RELEASE_TYPE') ? project.getProperty('RELEASE_TYPE') : 'DEV'
     STABLE_BUILD = project.hasProperty('STABLE_BUILD') ? project.getProperty('STABLE_BUILD') : '0'
-    EXEC_SUFFIX = Os.isFamily(Os.FAMILY_WINDOWS) ? '.exe' : ''
-    QT5_DEPS = [
-        'Qt5Concurrent',
-        'Qt5Core',
-        'Qt5Gui',
-        'Qt5Multimedia',
-        'Qt5Network',
-        'Qt5OpenGL',
-        'Qt5Qml',
-        'Qt5Quick',
-        'Qt5QuickControls2',
-        'Qt5QuickTemplates2',
-        'Qt5Script',
-        'Qt5ScriptTools',
-        'Qt5Svg',
-        'Qt5WebChannel',
-        'Qt5WebSockets',
-        'Qt5Widgets',
-        'Qt5XmlPatterns',
-        // Android specific
-        'Qt5AndroidExtras',
-        'Qt5WebView',
-    ]
+    appVersionCode = Integer.valueOf(VERSION_CODE ?: 1)
+    appVersionName = RELEASE_NUMBER ?: "1.0"
 }
 
-def baseFolder = new File(HIFI_ANDROID_PRECOMPILED)
-def appDir = new File(projectDir, 'apps/interface')
-def sharedDir = appDir
-def jniFolder = new File(sharedDir, 'src/main/jniLibs/arm64-v8a')
-def baseUrl = 'https://hifi-public.s3.amazonaws.com/dependencies/android/'
-def breakpadDumpSymsDir = new File("${appDir}/build/tmp/breakpadDumpSyms")
+task setupDependencies() { }
 
-def qtFile='qt-5.11.1_linux_armv8-libcpp_openssl_patched.tgz'
-def qtChecksum='aa449d4bfa963f3bc9a9dfe558ba29df'
-def qtVersionId='3S97HBM5G5Xw9EfE52sikmgdN3t6C2MN'
-if (Os.isFamily(Os.FAMILY_MAC)) {
-    qtFile = 'qt-5.11.1_osx_armv8-libcpp_openssl_patched.tgz'
-    qtChecksum='c83cc477c08a892e00c71764dca051a0'
-    qtVersionId='OxBD7iKINv1HbyOXmAmDrBb8AF3N.Kup'
-} else if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-    qtFile = 'qt-5.11.1_win_armv8-libcpp_openssl_patched.tgz'
-    qtChecksum='0582191cc55431aa4f660848a542883e'
-    qtVersionId='JfWM0P_Mz5Qp0LwpzhrsRwN3fqlLSFeT'
-}
+// def runBreakpadDumpSyms = { buildType ->
+//     gradle.startParameter.showStacktrace = ShowStacktrace.ALWAYS
 
-def packages = [
-    qt: [
-        file: qtFile,
-        versionId: qtVersionId,
-        checksum: qtChecksum,
-    ],
-    bullet: [
-        file: 'bullet-2.88_armv8-libcpp.tgz',
-        versionId: 'S8YaoED0Cl8sSb8fSV7Q2G1lQJSNDxqg',
-        checksum: '81642779ccb110f8c7338e8739ac38a0',
-    ],
-    draco: [
-        file: 'draco_armv8-libcpp.tgz',
-        versionId: '3.B.uBj31kWlgND3_R2xwQzT_TP6Dz_8',
-        checksum: '617a80d213a5ec69fbfa21a1f2f738cd',
-    ],
-    glad: [
-        file: 'glad_armv8-libcpp.zip',
-        versionId: 'r5Zran.JSCtvrrB6Q4KaqfIoALPw3lYY',
-        checksum: 'a8ee8584cf1ccd34766c7ddd9d5e5449',
-    ],
-    gvr: [
-        file: 'gvrsdk_v1.101.0.tgz',
-        versionId: 'nqBV_j81Uc31rC7bKIrlya_Hah4v3y5r',
-        checksum: '57fd02baa069176ba18597a29b6b4fc7',
-    ],
-    nvtt: [
-        file: 'nvtt_armv8-libcpp.zip',
-        versionId: 'lmkBVR5t4UF1UUwMwEirnk9H_8Nt90IO',
-        checksum: 'eb46d0b683e66987190ed124aabf8910',
-        sharedLibFolder: 'lib',
-        includeLibs: ['libnvtt.so', 'libnvmath.so', 'libnvimage.so', 'libnvcore.so'],
-    ],
-    oculus: [
-        file: 'ovr_sdk_mobile_1.19.0.zip',
-        versionId: 's_RN1vlEvUi3pnT7WPxUC4pQ0RJBs27y',
-        checksum: '98f0afb62861f1f02dd8110b31ed30eb',
-        sharedLibFolder: 'VrApi/Libs/Android/arm64-v8a/Release',
-        includeLibs: ['libvrapi.so'],
-    ],
-    openssl: [
-        file: 'openssl-1.1.0g_armv8.tgz',
-        versionId: 'AiiPjmgUZTgNj7YV1EEx2lL47aDvvvAW',
-        checksum: 'cabb681fbccd79594f65fcc266e02f32',
-    ],
-    polyvox: [
-        file: 'polyvox_armv8-libcpp.tgz',
-        versionId: 'A2kbKiNhpIenGq23bKRRzg7IMAI5BI92',
-        checksum: 'dba88b3a098747af4bb169e9eb9af57e',
-        sharedLibFolder: 'lib',
-        includeLibs: ['Release/libPolyVoxCore.so', 'libPolyVoxUtil.so'],
-    ],
-    tbb: [
-        file: 'tbb-2018_U1_armv8_libcpp.tgz',
-        versionId: 'mrRbWnv4O4evcM1quRH43RJqimlRtaKB',
-        checksum: '20768f298f53b195e71b414b0ae240c4',
-        sharedLibFolder: 'lib/release',
-        includeLibs: ['libtbb.so', 'libtbbmalloc.so'],
-    ],
-    hifiAC: [
-            baseUrl: 'http://s3.amazonaws.com/hifi-public/dependencies/',
-            file: 'codecSDK-android_armv8-2.0.zip',
-            checksum: '1cbef929675818fc64c4101b72f84a6a'
-    ],
-    etc2comp: [
-        file: 'etc2comp-patched-armv8-libcpp.tgz',
-        versionId: 'bHhGECRAQR1vkpshBcK6ByNc1BQIM8gU',
-        checksum: '14b02795d774457a33bbc60e00a786bc'
-    ],
-    breakpad: [
-        file: 'breakpad.tgz',
-        versionId: '8VrYXz7oyc.QBxNia0BVJOUBvrFO61jI',
-        checksum: 'ddcb23df336b08017042ba4786db1d9e',
-        sharedLibFolder: 'lib',
-        includeLibs: ['libbreakpad_client.a']
-    ]
-]
+//     def objDir = new File("${sharedDir}/build/intermediates/cmake/${buildType}/obj/arm64-v8a")
+//     def stripDebugSymbol = "${sharedDir}/build/intermediates/transforms/stripDebugSymbol/${buildType}/0/lib/arm64-v8a/"
+//     def outputDir = new File(breakpadDumpSymsDir, buildType)
+//     if (!outputDir.exists()) {
+//         outputDir.mkdirs()
+//     }
 
-def options = [
-    files: new TreeSet<File>(),
-    features: new HashSet<String>(),
-    permissions: new HashSet<String>()
-]
+//     objDir.eachFileRecurse (FileType.FILES) { file ->
+//         if (file.name.endsWith('.so')) {
+//             def output = file.name + ".sym"
+//             def cmdArgs = [
+//                     file.toString(),
+//                     stripDebugSymbol
+//             ]
+//             def result = exec {
+//                 workingDir HIFI_ANDROID_PRECOMPILED + '/breakpad/bin'
+//                 commandLine './dump_syms'
+//                 args cmdArgs
+//                 ignoreExitValue true
+//                 standardOutput = new BufferedOutputStream(new FileOutputStream(new File(outputDir, output)))
+//             }
+//         }
+//     }
+// }
 
-def qmlRoot = new File(HIFI_ANDROID_PRECOMPILED, 'qt')
+// task runBreakpadDumpSymsDebug() {
+//     doLast {
+//         runBreakpadDumpSyms("debug");
+//     }
+// }
 
-def captureOutput = { String command, List<String> commandArgs ->
-    def result
-    new ByteArrayOutputStream().withStream { os ->
-        def execResult = exec {
-            executable = command
-            args = commandArgs
-            standardOutput = os
-            errorOutput = new ByteArrayOutputStream()
-        }
-        result = os.toString()
-    }
-    return result;
-}
+// task runBreakpadDumpSymsRelease() {
+//     doLast {
+//         runBreakpadDumpSyms("release");
+//     }
+// }
 
-def relativize = { File root, File absolute ->
-    def relativeURI = root.toURI().relativize(absolute.toURI())
-    return new File(relativeURI.toString())
-}
+// task zipDumpSymsDebug(type: Zip, dependsOn: runBreakpadDumpSymsDebug) {
+//     from (new File(breakpadDumpSymsDir, "debug").absolutePath)
+//     archiveName "symbols-${RELEASE_NUMBER}-debug.zip"
+//     destinationDir(new File("${appDir}/build/tmp/"))
+// }
 
-def scanQmlImports = { File qmlRootPath ->
-    def qmlImportCommandFile = new File(qmlRoot, 'bin/qmlimportscanner' + EXEC_SUFFIX)
-    if (!qmlImportCommandFile.exists()) {
-        throw new GradleException('Unable to find required qmlimportscanner executable at ' + qmlImportCommandFile.parent.toString())
-    }
+// task zipDumpSymsRelease(type: Zip, dependsOn: runBreakpadDumpSymsRelease) {
+//     from (new File(breakpadDumpSymsDir, "release").absolutePath)
+//     archiveName "symbols-${RELEASE_NUMBER}-release.zip"
+//     destinationDir(new File("${appDir}/build/tmp/"))
+// }
 
-    def command = qmlImportCommandFile.absolutePath
-    def args = [
-        '-rootPath', qmlRootPath.absolutePath,
-        '-importPath', "${qmlRoot.absolutePath}/qml"
-    ]
+// task uploadBreakpadDumpSymsDebug(type:io.github.httpbuilderng.http.HttpTask, dependsOn: zipDumpSymsDebug) {
+//     onlyIf {
+//         System.getenv("CMAKE_BACKTRACE_URL") && System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")
+//     }
+//     config {
+//         request.uri = System.getenv("CMAKE_BACKTRACE_URL")
+//     }
+//     post {
+//         request.uri.path = '/post'
+//         request.uri.query = [format: 'symbols', token: System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")]
+//         request.body = new File("${appDir}/build/tmp/", "symbols-${RELEASE_NUMBER}-debug.zip").bytes
+//         request.contentType = 'application/octet-stream'
+//         response.success {
+//             println ("${appDir}/build/tmp/symbols-${RELEASE_NUMBER}-debug.zip uploaded")
+//         }
+//     }
+// }
 
-    def commandResult = captureOutput(command, args)
-    new JsonSlurper().parseText(commandResult).each {
-        if (!it.containsKey('path')) {
-            println "Warning: QML import could not be resolved in any of the import paths: ${it.name}"
-            return
-        }
-        def file = new File(it.path)
-        // Ignore non-existent files
-        if (!file.exists()) {
-            return
-        }
-        // Ignore files in the import path
-        if (file.canonicalPath.startsWith(qmlRootPath.canonicalPath)) {
-            return
-        }
-        if (file.isFile()) {
-            options.files.add(file)
-        } else {
-            file.eachFileRecurse(FileType.FILES, {
-                options.files.add(it)
-            })
-        }
-    }
-}
+// task uploadBreakpadDumpSymsRelease(type:io.github.httpbuilderng.http.HttpTask, dependsOn: zipDumpSymsRelease) {
+//     onlyIf {
+//         System.getenv("CMAKE_BACKTRACE_URL") && System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")
+//     }
+//     config {
+//         request.uri = System.getenv("CMAKE_BACKTRACE_URL")
+//     }
+//     post {
+//         request.uri.path = '/post'
+//         request.uri.query = [format: 'symbols', token: System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")]
+//         request.body = new File("${appDir}/build/tmp/", "symbols-${RELEASE_NUMBER}-release.zip").bytes
+//         request.contentType = 'application/octet-stream'
+//         response.success {
+//             println ("${appDir}/build/tmp/symbols-${RELEASE_NUMBER}-release.zip uploaded")
+//         }
+//     }
+// }
 
-def parseQtDependencies = { List qtLibs ->
-    qtLibs.each({
-        def libFile = new File(qmlRoot, "lib/lib${it}.so")
-        options.files.add(libFile)
-
-        def androidDeps = new File(qmlRoot, "lib/${it}-android-dependencies.xml")
-        if (!libFile.exists()) return
-        if (!androidDeps.exists()) return
-
-        new XmlSlurper().parse(androidDeps).dependencies.lib.depends.'*'.each{ node ->
-            switch (node.name()) {
-                case 'lib':
-                case 'bundled':
-                    def relativeFilename = node.@file.toString()
-
-                    // Special case, since this is handled by qmlimportscanner instead
-                    if (relativeFilename.startsWith('qml'))
-                        return
-
-                    def file = new File(qmlRoot, relativeFilename)
-
-                    if (!file.exists())
-                        return
-
-                    if (file.isFile()) {
-                        options.files.add(file)
-                    } else {
-                        file.eachFileRecurse(FileType.FILES, { options.files.add(it) })
-                    }
-                    break
+// task renameHifiACTaskDebug() {
+//     doLast {
+//         def sourceFile = new File("${appDir}/build/intermediates/cmake/debug/obj/arm64-v8a/","libhifiCodec.so")
+//         def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
+//         copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
+//     }
+// }
+// task renameHifiACTaskRelease(type: Copy) {
+//     doLast {
+//         def sourceFile = new File("${appDir}/build/intermediates/cmake/release/obj/arm64-v8a/","libhifiCodec.so")
+//         def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
+//         copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
+//     }
+// }
 
 
-                case 'jar':
-                    if (node.@bundling == "1") {
-                        def jar = new File(qmlRoot, node.@file.toString())
-                        if (!jar.exists()) {
-                            throw new GradleException('Unable to find required JAR ' + jar.path)
-                        }
-                        options.files.add(jar)
-                    }
-                    break
-
-                case 'permission':
-                    options.permissions.add(node.@name)
-                    break
-
-                case 'feature':
-                    options.features.add(node.@name)
-                    break
-
-                default:
-                    throw new GradleException('Unhandled Android Dependency node ' + node.name())
-            }
-        }
-    })
-}
-
-def generateLibsXml = {
-    def libDestinationDirectory = jniFolder
-    def jarDestinationDirectory = new File(sharedDir, 'libs')
-    def assetDestinationDirectory = new File(sharedDir, 'src/main/assets/--Added-by-androiddeployqt--');
-    def libsXmlFile = new File(sharedDir, 'src/main/res/values/libs.xml')
-    def libPrefix = 'lib' + File.separator
-    def jarPrefix = 'jar' + File.separator
-    def xmlParser = new XmlParser()
-    def libsXmlRoot = xmlParser.parseText('<?xml version="1.0" encoding="UTF-8"?><resources/>')
-    def qtLibsNode = xmlParser.createNode(libsXmlRoot, 'array', [name: 'qt_libs'])
-    def bundledLibsNode = xmlParser.createNode(libsXmlRoot, 'array', [name: 'bundled_in_lib'])
-    def bundledAssetsNode = xmlParser.createNode(libsXmlRoot, 'array', [name: 'bundled_in_assets'])
-
-    options.files.each {
-        def sourceFile = it
-        if (!sourceFile.exists()) {
-            throw new GradleException("Unable to find dependency file " + sourceFile.toString())
-        }
-
-        def relativePath = relativize( qmlRoot, sourceFile ).toString()
-        def destinationFile
-        if (relativePath.endsWith('.so')) {
-            def garbledFileName
-            if (relativePath.startsWith(libPrefix)) {
-                garbledFileName = relativePath.substring(libPrefix.size())
-                Pattern p = ~/lib(Qt5.*).so/
-                Matcher m = p.matcher(garbledFileName)
-                assert m.matches()
-                def libName = m.group(1)
-                xmlParser.createNode(qtLibsNode, 'item', [:]).setValue(libName)
-            } else {
-                garbledFileName = 'lib' + relativePath.replace(File.separator, '_'[0])
-                xmlParser.createNode(bundledLibsNode, 'item', [:]).setValue("${garbledFileName}:${relativePath}".replace(File.separator, '/'))
-            }
-            destinationFile = new File(libDestinationDirectory, garbledFileName)
-        } else if (relativePath.startsWith('jar')) {
-            destinationFile = new File(jarDestinationDirectory, relativePath.substring(jarPrefix.size()))
-        } else {
-            xmlParser.createNode(bundledAssetsNode, 'item', [:]).setValue("--Added-by-androiddeployqt--/${relativePath}:${relativePath}".replace(File.separator, '/'))
-            destinationFile = new File(assetDestinationDirectory, relativePath)
-        }
-
-        copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
-        assert destinationFile.exists() && destinationFile.isFile()
-    }
-    def xml = XmlUtil.serialize(libsXmlRoot)
-    new FileWriter(libsXmlFile).withPrintWriter { writer ->
-        writer.write(xml)
-    }
-}
-
-task downloadDependencies {
-    doLast {
-        packages.each { entry ->
-            def filename = entry.value['file'];
-            def dependencyBaseUrl = entry.value['baseUrl']
-            def url = (dependencyBaseUrl?.trim() ? dependencyBaseUrl : baseUrl) + filename;
-            if (entry.value.containsKey('versionId')) {
-                url = url + '?versionId=' + entry.value['versionId']
-            }
-            download {
-                src url
-                dest new File(baseFolder, filename)
-                onlyIfNewer true
-            }
-        }
-    }
-}
-
-task verifyQt(type: Verify) { def p = packages['qt'];  src new File(baseFolder, p['file']);  checksum p['checksum']; }
-task verifyBullet(type: Verify) { def p = packages['bullet']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyDraco(type: Verify) { def p = packages['draco']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyGvr(type: Verify) { def p = packages['gvr']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyOculus(type: Verify) { def p = packages['oculus']; src new File(baseFolder, p['file']);  checksum p['checksum'] }
-task verifyOpenSSL(type: Verify) { def p = packages['openssl']; src new File(baseFolder, p['file']);  checksum p['checksum'] }
-task verifyPolyvox(type: Verify) { def p = packages['polyvox']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyTBB(type: Verify) { def p = packages['tbb']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyHifiAC(type: Verify) { def p = packages['hifiAC']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyEtc2Comp(type: Verify) { def p = packages['etc2comp']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-task verifyBreakpad(type: Verify) { def p = packages['breakpad']; src new File(baseFolder, p['file']); checksum p['checksum'] }
-
-task verifyDependencyDownloads(dependsOn: downloadDependencies) { }
-verifyDependencyDownloads.dependsOn verifyQt
-verifyDependencyDownloads.dependsOn verifyBullet
-verifyDependencyDownloads.dependsOn verifyDraco
-verifyDependencyDownloads.dependsOn verifyGvr
-verifyDependencyDownloads.dependsOn verifyOculus
-verifyDependencyDownloads.dependsOn verifyOpenSSL
-verifyDependencyDownloads.dependsOn verifyPolyvox
-verifyDependencyDownloads.dependsOn verifyTBB
-verifyDependencyDownloads.dependsOn verifyHifiAC
-verifyDependencyDownloads.dependsOn verifyEtc2Comp
-verifyDependencyDownloads.dependsOn verifyBreakpad
-
-task extractDependencies(dependsOn: verifyDependencyDownloads) {
-    doLast {
-        packages.each { entry ->
-            def folder = entry.key
-            def filename = entry.value['file']
-            def localFile = new File(HIFI_ANDROID_PRECOMPILED, filename)
-            def localFolder = new File(HIFI_ANDROID_PRECOMPILED, folder)
-            def fileTree;
-            if (filename.endsWith('zip')) {
-                fileTree = zipTree(localFile)
-            } else {
-                fileTree = tarTree(resources.gzip(localFile))
-            }
-            copy {
-                from fileTree
-                into localFolder
-            }
-        }
-    }
-}
-
-// Copies the non Qt dependencies.  Qt dependencies (primary libraries and plugins) are handled by the qtBundle task
-task copyDependencies(dependsOn: [ extractDependencies ]) {
-    doLast {
-        packages.each { entry ->
-            def packageName = entry.key
-            def currentPackage = entry.value;
-            if (currentPackage.containsKey('sharedLibFolder')) {
-                def localFolder = new File(baseFolder, packageName + '/' + currentPackage['sharedLibFolder'])
-                def tree = fileTree(localFolder);
-                if (currentPackage.containsKey('includeLibs')) {
-                    currentPackage['includeLibs'].each { includeSpec -> tree.include includeSpec }
-                }
-                tree.visit { element ->
-                    if (!element.file.isDirectory()) {
-                        println "Copying " + element.file + " to " + jniFolder
-                        copy {  from element.file; into jniFolder }
-                    }
-                }
-            }
-        }
-    }
-}
-
-task extractGvrBinaries(dependsOn: extractDependencies) {
-    doLast {
-        def gvrLibFolder = new File(HIFI_ANDROID_PRECOMPILED, 'gvr/gvr-android-sdk-1.101.0/libraries');
-        zipTree(new File(HIFI_ANDROID_PRECOMPILED, 'gvr/gvr-android-sdk-1.101.0/libraries/sdk-audio-1.101.0.aar')).visit { element ->
-            def fileName = element.file.toString();
-            if (fileName.endsWith('libgvr_audio.so') && fileName.contains('arm64-v8a')) {
-                copy {  from element.file; into gvrLibFolder }
-            }
-        }
-        zipTree(new File(HIFI_ANDROID_PRECOMPILED, 'gvr/gvr-android-sdk-1.101.0/libraries/sdk-base-1.101.0.aar')).visit { element ->
-            def fileName = element.file.toString();
-            if (fileName.endsWith('libgvr.so') && fileName.contains('arm64-v8a')) {
-                copy {  from element.file; into gvrLibFolder }
-            }
-        }
-        fileTree(gvrLibFolder).visit { element ->
-            if (element.file.toString().endsWith('.so')) {
-                copy { from element.file; into jniFolder }
-            }
-        }
-    }
-}
-
-def generateAssetsFileList = {
-    def assetsPath = "${sharedDir}/src/main/assets/"
-    def addedByAndroidDeployQtName = "--Added-by-androiddeployqt--/"
-
-    def addedByAndroidDeployQtPath = assetsPath + addedByAndroidDeployQtName
-
-    def addedByAndroidDeployQt = new File(addedByAndroidDeployQtPath)
-    if (!addedByAndroidDeployQt.exists() && !addedByAndroidDeployQt.mkdirs()) {
-        throw new GradleScriptException("Failed to create directory " + addedByAndroidDeployQtPath, null);
-    }
-    def outputFilename = "/qt_cache_pregenerated_file_list"
-    def outputFile = new File(addedByAndroidDeployQtPath + outputFilename);
-    Map<String, List<String>> directoryContents = new TreeMap<>();
-
-    def dir = new File(assetsPath)
-    dir.eachFileRecurse (FileType.ANY) { file ->
-
-        def name = file.path.substring(assetsPath.length())
-        int slashIndex = name.lastIndexOf('/')
-        def pathName = slashIndex >= 0 ? name.substring(0, slashIndex) : "/"
-        def fileName = slashIndex >= 0 ? name.substring(pathName.length() + 1) : name
-        if (!fileName.isEmpty() && file.isDirectory() && !fileName.endsWith("/")) {
-            fileName += "/"
-        }
-
-        if (!directoryContents.containsKey(pathName)) {
-            directoryContents[pathName] = new ArrayList<String>()
-        }
-        if (!fileName.isEmpty()) {
-            directoryContents[pathName].add(fileName);
-        }
-    }
-    DataOutputStream fos = new DataOutputStream(new FileOutputStream(outputFile));
-    for (Map.Entry<String, List<String>> e: directoryContents.entrySet()) {
-        def entryList = e.getValue()
-        fos.writeInt(e.key.length()*2); // 2 bytes per char
-        fos.writeChars(e.key);
-        fos.writeInt(entryList.size());
-        for (String entry: entryList) {
-            fos.writeInt(entry.length()*2);
-            fos.writeChars(entry);
-        }
-    }
-    fos.close();
-}
-
-
-// Copy required Qt main libraries and required plugins based on the predefined list here
-// FIXME eventually we would like to use the readelf functionality to automatically detect dependencies
-// from our built applications and use that during the full build process.  However doing so would mean
-// hooking existing Android build tasks since the output from the qtBundle logic adds JNI libs, asset
-// files and resources files and potentially modifies the AndroidManifest.xml
-task qtBundle {
-    doLast {
-        parseQtDependencies(QT5_DEPS)
-        def qmlImportFolder = new File("${appDir}/../../../interface/resources/qml/")
-        //def qmlImportFolder = new File("${projectDir}/apps/interface/src/main/cpp")
-        scanQmlImports(qmlImportFolder)
-        generateLibsXml()
-        generateAssetsFileList()
-   }
-}
-
-task setupDependencies(dependsOn: [copyDependencies, qtBundle]) { }
-
-task cleanDependencies(type: Delete) {
-    delete HIFI_ANDROID_PRECOMPILED
-    delete 'shared/src/main/jniLibs/arm64-v8a'
-    delete 'shared/src/main/assets/--Added-by-androiddeployqt--'
-    delete 'shared/src/main/res/values/libs.xml'
-}
-
-def runBreakpadDumpSyms = { buildType ->
-    gradle.startParameter.showStacktrace = ShowStacktrace.ALWAYS
-
-    def objDir = new File("${sharedDir}/build/intermediates/cmake/${buildType}/obj/arm64-v8a")
-    def stripDebugSymbol = "${sharedDir}/build/intermediates/transforms/stripDebugSymbol/${buildType}/0/lib/arm64-v8a/"
-    def outputDir = new File(breakpadDumpSymsDir, buildType)
-    if (!outputDir.exists()) {
-        outputDir.mkdirs()
-    }
-
-    objDir.eachFileRecurse (FileType.FILES) { file ->
-        if (file.name.endsWith('.so')) {
-            def output = file.name + ".sym"
-            def cmdArgs = [
-                    file.toString(),
-                    stripDebugSymbol
-            ]
-            def result = exec {
-                workingDir HIFI_ANDROID_PRECOMPILED + '/breakpad/bin'
-                commandLine './dump_syms'
-                args cmdArgs
-                ignoreExitValue true
-                standardOutput = new BufferedOutputStream(new FileOutputStream(new File(outputDir, output)))
-            }
-        }
-    }
-}
-
-task runBreakpadDumpSymsDebug() {
-    doLast {
-        runBreakpadDumpSyms("debug");
-    }
-}
-
-task runBreakpadDumpSymsRelease() {
-    doLast {
-        runBreakpadDumpSyms("release");
-    }
-}
-
-task zipDumpSymsDebug(type: Zip, dependsOn: runBreakpadDumpSymsDebug) {
-    from (new File(breakpadDumpSymsDir, "debug").absolutePath)
-    archiveName "symbols-${RELEASE_NUMBER}-debug.zip"
-    destinationDir(new File("${appDir}/build/tmp/"))
-}
-
-task zipDumpSymsRelease(type: Zip, dependsOn: runBreakpadDumpSymsRelease) {
-    from (new File(breakpadDumpSymsDir, "release").absolutePath)
-    archiveName "symbols-${RELEASE_NUMBER}-release.zip"
-    destinationDir(new File("${appDir}/build/tmp/"))
-}
-
-task uploadBreakpadDumpSymsDebug(type:io.github.httpbuilderng.http.HttpTask, dependsOn: zipDumpSymsDebug) {
-    onlyIf {
-        System.getenv("CMAKE_BACKTRACE_URL") && System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")
-    }
-    config {
-        request.uri = System.getenv("CMAKE_BACKTRACE_URL")
-    }
-    post {
-        request.uri.path = '/post'
-        request.uri.query = [format: 'symbols', token: System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")]
-        request.body = new File("${appDir}/build/tmp/", "symbols-${RELEASE_NUMBER}-debug.zip").bytes
-        request.contentType = 'application/octet-stream'
-        response.success {
-            println ("${appDir}/build/tmp/symbols-${RELEASE_NUMBER}-debug.zip uploaded")
-        }
-    }
-}
-
-task uploadBreakpadDumpSymsRelease(type:io.github.httpbuilderng.http.HttpTask, dependsOn: zipDumpSymsRelease) {
-    onlyIf {
-        System.getenv("CMAKE_BACKTRACE_URL") && System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")
-    }
-    config {
-        request.uri = System.getenv("CMAKE_BACKTRACE_URL")
-    }
-    post {
-        request.uri.path = '/post'
-        request.uri.query = [format: 'symbols', token: System.getenv("CMAKE_BACKTRACE_SYMBOLS_TOKEN")]
-        request.body = new File("${appDir}/build/tmp/", "symbols-${RELEASE_NUMBER}-release.zip").bytes
-        request.contentType = 'application/octet-stream'
-        response.success {
-            println ("${appDir}/build/tmp/symbols-${RELEASE_NUMBER}-release.zip uploaded")
-        }
-    }
-}
-
-task renameHifiACTaskDebug() {
-    doLast {
-        def sourceFile = new File("${appDir}/build/intermediates/cmake/debug/obj/arm64-v8a/","libhifiCodec.so")
-        def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
-        copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
-    }
-}
-task renameHifiACTaskRelease(type: Copy) {
-    doLast {
-        def sourceFile = new File("${appDir}/build/intermediates/cmake/release/obj/arm64-v8a/","libhifiCodec.so")
-        def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
-        copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
-    }
-}
 
 // FIXME this code is prototyping the desired functionality for doing build time binary dependency resolution.
 // See the comment on the qtBundle task above
