@@ -152,6 +152,7 @@ void RenderThread::shutdown() {
 }
 
 void RenderThread::handleInput() {
+#if OCULUS_MOBILE
     auto readResult = ovr::VrHandler::withOvrMobile([&](ovrMobile *session) {
         for (auto &controller : devices) {
             controller.update(session);
@@ -178,6 +179,7 @@ void RenderThread::handleInput() {
             }
         }
     }
+#endif
 }
 
 void RenderThread::renderFrame(gpu::FramePointer& frame) {

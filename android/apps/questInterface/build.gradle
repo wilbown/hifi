@@ -32,12 +32,14 @@ android {
                     '-DHIFI_ANDROID_APP=questInterface',
                     '-DANDROID_TOOLCHAIN=clang',
                     '-DANDROID_STL=c++_shared',
+                    '-DCMAKE_VERBOSE_MAKEFILE=ON',
                     '-DRELEASE_NUMBER=' + RELEASE_NUMBER,
                     '-DRELEASE_TYPE=' + RELEASE_TYPE,
                     '-DSTABLE_BUILD=' + STABLE_BUILD,
                     '-DDISABLE_QML=OFF',
                     '-DDISABLE_KTX_CACHE=OFF',
-                    '-DUSE_BREAKPAD=OFF';
+                    '-DUSE_BREAKPAD=OFF'
+                targets = ['questInterface']
             }
         }
     }
