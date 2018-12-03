@@ -94,6 +94,9 @@ endif()
         if self.args.force_build:
             print("Force build, out of date")
             return False
+        if not os.path.isfile(self.exe):
+            print("Exe file {} not found, out of date".format(self.exe))
+            return False
         if not os.path.isfile(self.tagFile):
             print("Tag file {} not found, out of date".format(self.tagFile))
             return False
