@@ -47,11 +47,6 @@ public:
 protected:
     const QString getName() const override { return NAME; }
 
-    std::function<void(gpu::Batch&, const gpu::TexturePointer&, bool mirror)> getHUDOperator() override {
-        static auto hudOperator = [](gpu::Batch&, const gpu::TexturePointer&, bool mirror){};
-        return hudOperator;
-    }
-
     bool internalActivate() override;
     void internalDeactivate() override;
 
