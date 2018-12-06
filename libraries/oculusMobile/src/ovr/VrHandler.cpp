@@ -35,8 +35,8 @@ struct VrSurface : public TaskQueue {
     Framebuffer eyeFbos[2];
     uint32_t readFbo{0};
     QAndroidJniObject mainActivity { QtAndroid::androidActivity() };
-    QAndroidJniObject oculusActivity;
-
+    jobject oculusActivity{ nullptr };
+    QAndroidJniEnvironment* renderEnv{ nullptr };
     uint32_t presentIndex{0};
     double displayTime{0};
 
@@ -56,6 +56,7 @@ struct VrSurface : public TaskQueue {
             vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_WIDTH),
             vrapi_GetSystemPropertyInt(&java, VRAPI_SYS_PROP_SUGGESTED_EYE_TEXTURE_HEIGHT),
         };
+        __android_log_print(ANDROID_LOG_WARN, "QQQ_OVR", "QQQ Eye Size %d, %d", eyeTargetSize.x, eyeTargetSize.y);
         ovr::for_each_eye([&](ovrEye eye) {
             eyeFbos[eye].create(eyeTargetSize);
         });
@@ -103,9 +104,14 @@ struct VrSurface : public TaskQueue {
                 session = nullptr;
                 oculusActivity = nullptr;
             } else {
+                if (!renderEnv) {
+                    renderEnv = new QAndroidJniEnvironment();
+                }
+                JavaVM* vm = renderEnv->javaVM();
                 __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "vrapi_EnterVrMode");
-                oculusActivity = oculusActivityWrapper->_activity;
-                ovrJava java{ QAndroidJniEnvironment::javaVM(), QAndroidJniEnvironment(), oculusActivity.object() };
+                JNIEnv* env = *renderEnv;
+                oculusActivity = env->NewGlobalRef(oculusActivityWrapper->_activity);
+                ovrJava java{ vm, env, oculusActivity };
                 ovrModeParms modeParms = vrapi_DefaultModeParms(&java);
                 modeParms.Flags |= VRAPI_MODE_FLAG_NATIVE_WINDOW;
                 modeParms.Display = (unsigned long long) vrglContext.display;
@@ -114,6 +120,7 @@ struct VrSurface : public TaskQueue {
                 session = vrapi_EnterVrMode(&modeParms);
                 ovrPosef trackingTransform = vrapi_GetTrackingTransform( session, VRAPI_TRACKING_TRANSFORM_SYSTEM_CENTER_EYE_LEVEL);
                 vrapi_SetTrackingTransform( session, trackingTransform );
+                vrapi_SetPerfThread(session, VRAPI_PERF_THREAD_TYPE_RENDERER, pthread_self());
             }
         }
     }
@@ -211,11 +218,12 @@ void VrHandler::presentFrame(uint32_t sourceTexture, const glm::uvec2 &sourceSiz
 //}
 
 bool VrHandler::withOvrJava(const OvrJavaTask& task) {
-    jobject activity = SURFACE.oculusActivity.object() ? SURFACE.oculusActivity.object() : SURFACE.mainActivity.object();
+    jobject activity = SURFACE.oculusActivity ? SURFACE.oculusActivity : SURFACE.mainActivity.object();
     if (!activity) {
         activity = QtAndroid::androidActivity().object();
     }
-    ovrJava java{ QAndroidJniEnvironment::javaVM(), QAndroidJniEnvironment(), activity };
+    QAndroidJniEnvironment env;
+    ovrJava java{ QAndroidJniEnvironment::javaVM(), env, activity };
     task(&java);
     return true;
 }

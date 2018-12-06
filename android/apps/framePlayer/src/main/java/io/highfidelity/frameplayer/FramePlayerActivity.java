@@ -20,6 +20,7 @@ public class FramePlayerActivity extends QtActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        System.loadLibrary("framePlayer");
         super.onCreate(savedInstanceState);
         nativeOnCreate();
     }

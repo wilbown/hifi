@@ -50,24 +50,19 @@ struct HandController{
 std::vector<HandController> devices;
 
 extern "C" {
+
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *, void *) {
+    __android_log_write(ANDROID_LOG_WARN, "QQQ", __FUNCTION__);
+    return JNI_VERSION_1_6;
+}
+
+
 JNIEXPORT void JNICALL Java_io_highfidelity_frameplayer_FramePlayerActivity_nativeOnCreate(JNIEnv* env, jobject obj) {
     env->GetJavaVM(&_vm);
     _activity = env->NewGlobalRef(obj);
 }
 }
 
-
-JavaVM* RenderThread::getVm() const {
-    return _vm;
-}
-
-JNIEnv* RenderThread::getEnv() const  {
-    return _env;
-}
-
-jobject RenderThread::getActivity() const {
-    return _activity;
-}
 #else
 extern "C" {
 JNIEXPORT void JNICALL Java_io_highfidelity_frameplayer_FramePlayerActivity_nativeOnCreate(JNIEnv* env, jobject obj) {
@@ -123,14 +118,18 @@ void RenderThread::initialize(QWindow* window) {
     _backend = _gpuContext->getBackend();
     _glContext.doneCurrent();
     _glContext.moveToThread(_thread);
+    _thread->setObjectName("RenderThread");
 }
 
 void RenderThread::setup() {
+    ovr::VrHandler::initVr();
+
     // Wait until the context has been moved to this thread
     { std::unique_lock<std::mutex> lock(_frameLock); }
     _gpuContext->beginFrame();
     _gpuContext->endFrame();
     _glContext.makeCurrent();
+
 
 #if OCULUS_MOBILE
     _vm->AttachCurrentThread(&_env, nullptr);
@@ -162,7 +161,6 @@ void RenderThread::handleInput() {
     if (readResult) {
         for (auto &controller : devices) {
             const auto &caps = controller.caps;
-            const auto &deviceId = caps.Header.DeviceID;
             if (controller.stateResult >= 0) {
                 const auto &remote = controller.state;
                 if (remote.Joystick.x != 0.0f || remote.Joystick.y != 0.0f) {
@@ -198,19 +196,20 @@ void RenderThread::renderFrame(gpu::FramePointer& frame) {
 
     static std::once_flag once;
     std::call_once(once, [&]{
-        uint32_t deviceIndex { 0 };
-        ovrInputCapabilityHeader capsHeader;
-        auto session = getSession();
-        while (vrapi_EnumerateInputDevices(session, deviceIndex, &capsHeader) >= 0) {
-            if (capsHeader.Type == ovrControllerType_TrackedRemote) {
-                HandController controller = {};
-                controller.caps.Header = capsHeader;
-                controller.state.Header.ControllerType = ovrControllerType_TrackedRemote;
-                vrapi_GetInputDeviceCapabilities( session, &controller.caps.Header);
-                devices.push_back(controller);
+        withOvrMobile([&](ovrMobile* session){
+            int deviceIndex = 0;
+            ovrInputCapabilityHeader capsHeader;
+            while (vrapi_EnumerateInputDevices(session, deviceIndex, &capsHeader) >= 0) {
+                if (capsHeader.Type == ovrControllerType_TrackedRemote) {
+                    HandController controller = {};
+                    controller.caps.Header = capsHeader;
+                    controller.state.Header.ControllerType = ovrControllerType_TrackedRemote;
+                    vrapi_GetInputDeviceCapabilities( session, &controller.caps.Header);
+                    devices.push_back(controller);
+                }
+                ++deviceIndex;
             }
-            ++deviceIndex;
-        }
+        });
     });
 #else
     eyeProjections[0][0] = vec4{ 0.91729, 0.0, -0.17407, 0.0 };
@@ -237,7 +236,7 @@ void RenderThread::renderFrame(gpu::FramePointer& frame) {
 #if OCULUS_MOBILE
     auto finalTexture = glbackend.getTextureID(frame->framebuffer->getRenderBuffer(0));
     _glContext.doneCurrent();
-    presentFrame(finalTexture, fboSize);
+    presentFrame(finalTexture, fboSize, tracking);
 #else
     auto windowSize = _window->geometry().size();
     auto finalFbo = glbackend.getFramebufferID(frame->framebuffer);

@@ -80,6 +80,7 @@ endif()
 if (ANDROID)
   set(GLES_OPTION ON)
   set(PLATFORM_QT_COMPONENTS AndroidExtras WebView)
+  add_definitions(-DHIFI_ANDROID_APP=\"${HIFI_ANDROID_APP}\")
 else ()
   set(PLATFORM_QT_COMPONENTS WebEngine)
 endif ()
@@ -105,12 +106,6 @@ option(
 )
 
 set(PLATFORM_QT_GL OpenGL)
-
-if (ANDROID)
-  set(OCULUS_MOBILE 1)
-  set(OCULUS_QUEST 1)
-  add_definitions(-DUSE_QUEST)
-endif()
 
 if (USE_GLES)
   add_definitions(-DUSE_GLES)

@@ -42,12 +42,6 @@ public:
     uint32_t _externalTexture{ 0 };
     glm::mat4 _correction;
 
-#if OCULUS_MOBILE
-    JavaVM* getVm() const override;
-    JNIEnv* getEnv() const override;
-    jobject getActivity() const override;
-#endif
-
     void move(const glm::vec3& v);
     void setup() override;
     bool process() override;

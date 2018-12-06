@@ -39,9 +39,11 @@ public class OculusMobileActivity extends Activity implements SurfaceHolder.Call
 
 
     public static void launch(Activity activity) {
-        activity.runOnUiThread(()->{
-            activity.startActivity(new Intent(activity, OculusMobileActivity.class));
-        });
+        if (activity != null) {
+            activity.runOnUiThread(()->{
+                activity.startActivity(new Intent(activity, OculusMobileActivity.class));
+            });
+        }
     }
 
     @Override
