@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <mutex>
+#include <queue>
 
 #include <GLMHelpers.h>
 
@@ -207,6 +208,7 @@ public:
 
     virtual void render(const Batch& batch) = 0;
     virtual void syncCache() = 0;
+    virtual void syncProgram(const gpu::ShaderPointer& program) = 0;
     virtual void recycle() const = 0;
     virtual void downloadFramebuffer(const FramebufferPointer& srcFramebuffer, const Vec4i& region, QImage& destImage) = 0;
     virtual void setCameraCorrection(const Mat4& correction, const Mat4& prevRenderView, bool reset = false) {}
@@ -394,6 +396,20 @@ public:
     static Size getTextureResourcePopulatedGPUMemSize();
     static Size getTextureResourceIdealGPUMemSize();
 
+    struct ProgramsToSync {
+        ProgramsToSync(const std::vector<gpu::ShaderPointer>& programs, std::function<void()> callback, size_t rate) :
+            programs(programs), callback(callback), rate(rate) {}
+
+        std::vector<gpu::ShaderPointer> programs;
+        std::function<void()> callback;
+        size_t rate;
+    };
+
+    void pushProgramsToSync(const std::vector<uint32_t>& programIDs, std::function<void()> callback, size_t rate = 0);
+    void pushProgramsToSync(const std::vector<gpu::ShaderPointer>& programs, std::function<void()> callback, size_t rate = 0);
+
+    void processProgramsToSync();
+
 protected:
     Context(const Context& context);
 
@@ -404,6 +420,11 @@ protected:
     FramePointer _currentFrame;
     RangeTimerPointer _frameRangeTimer;
     StereoState _stereo;
+
+    std::mutex _programsToSyncMutex;
+    std::queue<ProgramsToSync> _programsToSyncQueue;
+    gpu::Shaders _syncedPrograms;
+    size_t _nextProgramToSyncIndex { 0 };
 
     // Sampled at the end of every frame, the stats of all the counters
     mutable ContextStats _frameStats;

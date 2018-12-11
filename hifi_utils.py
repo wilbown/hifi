@@ -10,6 +10,10 @@ import urllib
 import urllib.request
 import zipfile
 import tempfile
+import time
+import functools
+
+print = functools.partial(print, flush=True)
 
 def scriptRelative(*paths):
     scriptdir = os.path.dirname(os.path.realpath(sys.argv[0]))

@@ -562,6 +562,9 @@ void OpenGLDisplayPlugin::updateFrameData() {
         if (_newFrameQueue.size() > 1) {
             _droppedFrameRate.increment(_newFrameQueue.size() - 1);
         }
+
+        _gpuContext->processProgramsToSync();
+
         while (!_newFrameQueue.empty()) {
             _currentFrame = _newFrameQueue.front();
             _newFrameQueue.pop();
@@ -682,6 +685,7 @@ void OpenGLDisplayPlugin::present() {
     auto frameId = (uint64_t)presentCount();
     PROFILE_RANGE_EX(render, __FUNCTION__, 0xffffff00, frameId)
     uint64_t startPresent = usecTimestampNow();
+
     {
         PROFILE_RANGE_EX(render, "updateFrameData", 0xff00ff00, frameId)
         updateFrameData();
@@ -875,7 +879,6 @@ void OpenGLDisplayPlugin::render(std::function<void(gpu::Batch& batch)> f) {
     f(batch);
     _gpuContext->executeBatch(batch);
 }
-
 
 OpenGLDisplayPlugin::~OpenGLDisplayPlugin() {
 }

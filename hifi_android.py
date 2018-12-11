@@ -5,6 +5,9 @@ import platform
 import re
 import shutil
 import xml.etree.ElementTree as ET
+import functools
+
+print = functools.partial(print, flush=True)
 
 ANDROID_PACKAGE_URL = 'https://hifi-public.s3.amazonaws.com/dependencies/android/'
 
