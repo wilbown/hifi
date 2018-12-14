@@ -185,8 +185,11 @@ void Web3DOverlay::buildWebSurface() {
         if (isWebContent()) {
             _webSurface = DependencyManager::get<OffscreenQmlSurfaceCache>()->acquire(QML);
             _cachedWebSurface = true;
+
             _webSurface->getRootItem()->setProperty("url", _url);
             _webSurface->getRootItem()->setProperty("scriptURL", _scriptURL);
+
+
         } else {
             _webSurface = QSharedPointer<OffscreenQmlSurface>(new OffscreenQmlSurface(), qmlSurfaceDeleter);
             connect(_webSurface.data(), &hifi::qml::OffscreenSurface::rootContextCreated, [this](QQmlContext* surfaceContext) {

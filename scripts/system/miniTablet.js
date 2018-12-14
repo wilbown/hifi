@@ -31,12 +31,12 @@
 
         // Track controller grabbing state.
         HIFI_OBJECT_MANIPULATION_CHANNEL = "Hifi-Object-Manipulation",
-        grabbingHand = NO_HAND,
+        grabbingHand = RIGHT_HAND,
         grabbedItem = null,
 
         // Miscellaneous.
         tablet = Tablet.getTablet("com.highfidelity.interface.tablet.system"),
-        DEBUG = false;
+        DEBUG = false
 
 
     function debug(message) {
@@ -44,11 +44,12 @@
             return;
         }
         print("DEBUG: " + message);
+
     }
 
     function error(message) {
         print("ERROR: " + message);
-    }
+	}
 
     function handJointName(hand) {
         var jointName;
@@ -126,7 +127,7 @@
             miniOverlayObject = null,
 
             // Button icons.
-            MUTE_ON_ICON = Script.resourcesPath() + "icons/tablet-icons/mic-mute-a.svg",
+            MUTE_ON_ICON =Script.resourcesPath() + "icons/tablet-icons/mic-mute-a.svg",
             MUTE_OFF_ICON = Script.resourcesPath() + "icons/tablet-icons/mic-unmute-i.svg",
             GOTO_ICON = Script.resourcesPath() + "icons/tablet-icons/goto-i.svg",
 
@@ -243,6 +244,7 @@
         }
 
         function playSound(sound, volume) {
+			console.log("AAAA: Playing sound");
             Audio.playSound(sound, {
                 position: uiHand === LEFT_HAND ? MyAvatar.getLeftPalmPosition() : MyAvatar.getRightPalmPosition(),
                 volume: volume,
@@ -274,7 +276,7 @@
 
         function show(hand) {
             var initialScale = 0.01; // Start very small.
-
+			console.log("AAAA: SHOW TABLET");
             uiHand = hand;
 
             Overlays.editOverlay(miniOverlay, {
@@ -319,6 +321,7 @@
         }
 
         function startExpandingTablet(hand) {
+			console.log("AAAA: START EXPANDING TABLET");
             // Expansion details.
             if (hand === uiHand) {
                 miniExpandHandles = MINI_EXPAND_HANDLES;
@@ -437,6 +440,7 @@
         }
 
         function hide() {
+			console.log("AAAA: HIDING ");
             Overlays.editOverlay(miniOverlay, {
                 visible: false
             });
@@ -446,6 +450,7 @@
         }
 
         function create() {
+			console.log("AAAA: CREATING tablet ");
             miniOverlay = Overlays.addOverlay("model", {
                 url: MINI_MODEL,
                 dimensions: Vec3.multiply(MyAvatar.sensorToWorldScale, MINI_DIMENSIONS),
@@ -453,7 +458,7 @@
                 grabbable: true,
                 showKeyboardFocusHighlight: false,
                 displayInFront: true,
-                visible: false
+                visible: true
             });
             miniUIOverlay = Overlays.addOverlay("web3d", {
                 url: MINI_UI_HTML,
@@ -466,16 +471,17 @@
                 grabbable: false,
                 showKeyboardFocusHighlight: false,
                 displayInFront: true,
-                visible: false
+                visible: true
             });
 
-            miniUIOverlayEnabled = false; // This and alpha = 0 hides overlay while its content is being created.
+            miniUIOverlayEnabled = true; // This and alpha = 0 hides overlay while its content is being created.
 
             miniOverlayObject = Overlays.getOverlayObject(miniUIOverlay);
             miniOverlayObject.webEventReceived.connect(onWebEventReceived);
         }
 
         function destroy() {
+			console.log("destroying");
             if (miniOverlayObject) {
                 miniOverlayObject.webEventReceived.disconnect(onWebEventReceived);
                 Overlays.deleteOverlay(miniUIOverlay);

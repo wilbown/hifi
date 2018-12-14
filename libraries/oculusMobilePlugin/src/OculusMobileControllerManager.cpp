@@ -421,6 +421,7 @@ void OculusMobileInputDevice::update(float deltaTime, const controller::InputCal
         for (const auto& pair : BUTTON_MAP) {
             if (inputState.Buttons & pair.first) {
                 _buttonPressedMap.insert(pair.second);
+                qDebug()<<"AAAA:BUTTON PRESSED "<<pair.second;
             }
         }
         for (const auto& pair : LEFT_TOUCH_MAP) {

@@ -1,7 +1,7 @@
 set(TARGET_NAME questInterface)
 setup_hifi_library()
 link_hifi_libraries(
-    shared task networking qml 
+    shared task networking qml
     image fbx hfm render-utils physics entities octree 
     oculusMobile oculusMobilePlugin
     gl gpu ${PLATFORM_GL_BACKEND}

@@ -9,6 +9,7 @@
 //  See the accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0.html
 //
 
+
 #include "Application.h"
 
 #include <chrono>
@@ -37,7 +38,6 @@
 
 #include <QtNetwork/QLocalSocket>
 #include <QtNetwork/QLocalServer>
-
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickWindow>
@@ -50,6 +50,7 @@
 #include <QFontDatabase>
 #include <QProcessEnvironment>
 #include <QTemporaryDir>
+
 
 #include <gl/QOpenGLContextWrapper.h>
 #include <gl/GLWindow.h>
@@ -185,6 +186,9 @@
 #include "scripting/WalletScriptingInterface.h"
 #include "scripting/TTSScriptingInterface.h"
 #include "scripting/KeyboardScriptingInterface.h"
+
+
+
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "SpeechRecognizer.h"
 #endif
@@ -232,6 +236,7 @@
 
 #include "webbrowser/WebBrowserSuggestionsEngine.h"
 #include <DesktopPreviewProvider.h>
+
 
 #include "AboutUtil.h"
 
@@ -1725,7 +1730,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     });
     _applicationStateDevice->setInputVariant(STATE_PLATFORM_ANDROID, []() -> float {
 #if defined(Q_OS_ANDROID)
-        return 1;
+        return 1 ;
 #else
         return 0;
 #endif
@@ -1831,6 +1836,8 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     }
 
     this->installEventFilter(this);
+
+
 
 #ifdef HAVE_DDE
     auto ddeTracker = DependencyManager::get<DdeFaceTracker>();
@@ -1965,6 +1972,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         }
         return false;
     });
+
 
     // Keyboard focus handling for Web overlays.
     auto overlays = &(qApp->getOverlays());
@@ -2980,11 +2988,11 @@ void Application::initializeUi() {
         if (TouchscreenVirtualPadDevice::NAME == inputPlugin->getName()) {
             _touchscreenVirtualPadDevice = std::dynamic_pointer_cast<TouchscreenVirtualPadDevice>(inputPlugin);
 #if defined(Q_OS_ANDROID)
-            auto& virtualPadManager = VirtualPad::Manager::instance();
-            connect(&virtualPadManager, &VirtualPad::Manager::hapticFeedbackRequested,
-                    this, [](int duration) {
-                        AndroidHelper::instance().performHapticFeedback(duration);
-                    });
+ //          auto& virtualPadManager = VirtualPad::Manager::instance();
+ //          connect(&virtualPadManager, &VirtualPad::Manager::hapticFeedbackRequested,
+ //                  this, [](int duration) {
+ //                      AndroidHelper::instance().performHapticFeedback(duration);
+ //                  });
 #endif
         }
     }
@@ -3146,9 +3154,9 @@ void Application::onDesktopRootItemCreated(QQuickItem* rootItem) {
     surfaceContext->setContextProperty("AnimStats", AnimStats::getInstance());
 
 #if !defined(Q_OS_ANDROID)
-    auto offscreenUi = getOffscreenUI();
-    auto qml = PathUtils::qmlUrl("AvatarInputsBar.qml");
-    offscreenUi->show(qml, "AvatarInputsBar");
+//  auto offscreenUi = getOffscreenUI();
+//  auto qml = PathUtils::qmlUrl("AvatarInputsBar.qml");
+//  offscreenUi->show(qml, "AvatarInputsBar");
 #endif
 }
 
@@ -6879,7 +6887,7 @@ void Application::registerScriptEngineWithApplicationServices(ScriptEnginePointe
 
     bool clientScript = scriptEngine->isClientScript();
     scriptEngine->registerFunction("OverlayWindow", clientScript ? QmlWindowClass::constructor : QmlWindowClass::restricted_constructor);
-#if !defined(Q_OS_ANDROID) && !defined(DISABLE_QML)
+#if !defined(DISABLE_QML)
     scriptEngine->registerFunction("OverlayWebWindow", clientScript ? QmlWebWindowClass::constructor : QmlWebWindowClass::restricted_constructor);
 #endif
     scriptEngine->registerFunction("QmlFragment", clientScript ? QmlFragmentClass::constructor : QmlFragmentClass::restricted_constructor);

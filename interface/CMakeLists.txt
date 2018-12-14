@@ -209,7 +209,7 @@ endif()
 # link required hifi libraries
 link_hifi_libraries(
   shared workload task octree ktx gpu gl procedural graphics graphics-scripting render
-  pointers
+  pointers 
   recording hfm fbx networking model-networking entities avatars trackers
   audio audio-client animation script-engine physics
   render-utils entities-renderer avatars-renderer ui qml auto-updater midi
@@ -283,7 +283,7 @@ target_link_libraries(
   ${TARGET_NAME}
   Qt5::Gui Qt5::Network Qt5::Multimedia Qt5::Widgets
   Qt5::Qml Qt5::Quick Qt5::Script Qt5::Svg
-  Qt5::WebChannel
+  Qt5::WebChannel 
   ${PLATFORM_QT_LIBRARIES}
 )
 
