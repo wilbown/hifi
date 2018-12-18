@@ -513,6 +513,9 @@ void OculusMobileInputDevice::handleRotationForUntrackedHand(const controller::I
 bool OculusMobileInputDevice::triggerHapticPulse(float strength, float duration, controller::Hand hand) {
     Locker locker(_lock);
     bool success = true;
+
+    qDebug()<<"AAAA: Haptic duration %f " << duration;
+
     if (hand == controller::BOTH || hand == controller::LEFT) {
         success &= _hands[0].setHapticFeedback(strength, duration);
     }
@@ -671,7 +674,7 @@ QString OculusMobileInputDevice::getDefaultMappingConfig() const {
 // TODO migrate to a DLL model where plugins are discovered and loaded at runtime by the PluginManager class
 InputPluginList getInputPlugins() {
     InputPlugin* PLUGIN_POOL[] = {
-        new KeyboardMouseDevice(),
+      //  new KeyboardMouseDevice(),
         new OculusMobileControllerManager(),
         nullptr
     };

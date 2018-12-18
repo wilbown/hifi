@@ -12,12 +12,12 @@
 //
 
 var DEFAULT_SCRIPTS_COMBINED = [
- //  "system/request-service.js",
-  // "system/progress.js",
+   "system/request-service.js",
+   "system/progress.js",
   // "system/away.js",
   // "system/audio.js",
    "system/hmd.js",
- //  "system/menu.js",
+   "system/menu.js",
    "system/bubble.js",
   // "system/snapshot.js",
    //"system/pal.js", // "system/mod.js", // older UX, if you prefer
@@ -25,10 +25,10 @@ var DEFAULT_SCRIPTS_COMBINED = [
    "system/makeUserConnection.js",
    "system/tablet-goto.js",
   // "system/marketplaces/marketplaces.js",
- //  "system/notifications.js",
+   "system/notifications.js",
   // "system/commerce/wallet.js",
   // "system/edit.js",
-  // "system/dialTone.js",
+   "system/dialTone.js",
    "system/firstPersonHMD.js",
   
   "system/tablet-ui/tabletUI.js",
