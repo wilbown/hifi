@@ -674,7 +674,7 @@ QString OculusMobileInputDevice::getDefaultMappingConfig() const {
 // TODO migrate to a DLL model where plugins are discovered and loaded at runtime by the PluginManager class
 InputPluginList getInputPlugins() {
     InputPlugin* PLUGIN_POOL[] = {
-      //  new KeyboardMouseDevice(),
+        new KeyboardMouseDevice(),
         new OculusMobileControllerManager(),
         nullptr
     };
