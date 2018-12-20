@@ -196,6 +196,7 @@ private:
         ovrTracking tracking;
         ovrResult trackingResult{ ovrError_NotInitialized };
         bool setHapticFeedback(float strength, float duration) {
+#if 0
             bool success = true;
             bool sessionSuccess = ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
                 if (strength == 0.0f) {
@@ -210,6 +211,9 @@ private:
                 }
             });
             return success && sessionSuccess;
+#else
+            return true;
+#endif
         }
 
         void stopHapticPulse() {

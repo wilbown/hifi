@@ -8,6 +8,7 @@
 #include "VrHandler.h"
 
 #include <QtAndroidExtras/QAndroidJniEnvironment>
+#include <QtAndroidExtras/QtAndroid>
 
 #include <android/log.h>
 #include <android/native_window_jni.h>
@@ -16,7 +17,7 @@
 #include <VrApi.h>
 #include <VrApi_Helpers.h>
 #include <VrApi_Types.h>
-#include <QtAndroidExtras/QtAndroid>
+#include <OVR_Platform.h>
 
 #include "GLContext.h"
 #include "Helpers.h"
@@ -249,7 +250,7 @@ bool VrHandler::withOvrMobile(const OvrMobileTask &task) {
 }
 
 
-void VrHandler::initVr() {
+void VrHandler::initVr(const char* appId) {
     QAndroidJniEnvironment env;
     auto activity = QtAndroid::androidActivity();
     ovrJava java{ QAndroidJniEnvironment::javaVM(), env, activity.object() };
@@ -257,6 +258,13 @@ void VrHandler::initVr() {
     initParms.GraphicsAPI = VRAPI_GRAPHICS_API_OPENGL_ES_3;
     if (vrapi_Initialize(&initParms) != VRAPI_INITIALIZE_SUCCESS) {
         __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "Failed vrapi init");
+    }
+
+    if (appId) {
+        auto platformInitResult = ovr_PlatformInitializeAndroid(appId, activity.object(), env);
+        if (ovrPlatformInitialize_Success != platformInitResult) {
+            __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "Failed ovr platform init");
+        }
     }
 }
 

@@ -1512,6 +1512,7 @@ void AudioClient::outputFormatChanged() {
 
 bool AudioClient::switchInputToAudioDevice(const QAudioDeviceInfo inputDeviceInfo, bool isShutdownRequest) {
     Q_ASSERT_X(QThread::currentThread() == thread(), Q_FUNC_INFO, "Function invoked on wrong thread");
+    return true;
 
     qCDebug(audioclient) << __FUNCTION__ << "inputDeviceInfo: [" << inputDeviceInfo.deviceName() << "]";
     bool supportedFormat = false;
