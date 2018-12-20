@@ -33,7 +33,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
 
     var PROFILE = false;
     var DEBUG = false;
-    var SHOW_GRAB_SPHERE = true;
+    var SHOW_GRAB_SPHERE = false;
 
 
     if (typeof Test !== "undefined") {
