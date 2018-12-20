@@ -17,7 +17,7 @@
 #include <VrApi.h>
 #include <VrApi_Helpers.h>
 #include <VrApi_Types.h>
-#include <OVR_Platform.h>
+//#include <OVR_Platform.h>
 
 #include "GLContext.h"
 #include "Helpers.h"
@@ -260,12 +260,12 @@ void VrHandler::initVr(const char* appId) {
         __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "Failed vrapi init");
     }
 
-    if (appId) {
-        auto platformInitResult = ovr_PlatformInitializeAndroid(appId, activity.object(), env);
-        if (ovrPlatformInitialize_Success != platformInitResult) {
-            __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "Failed ovr platform init");
-        }
-    }
+  //  if (appId) {
+  //      auto platformInitResult = ovr_PlatformInitializeAndroid(appId, activity.object(), env);
+  //      if (ovrPlatformInitialize_Success != platformInitResult) {
+  //          __android_log_write(ANDROID_LOG_WARN, "QQQ_OVR", "Failed ovr platform init");
+  //      }
+  //  }
 }
 
 void VrHandler::shutdownVr() {

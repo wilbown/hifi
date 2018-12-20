@@ -9,11 +9,5 @@ macro(target_oculus_mobile)
     target_link_libraries(${TARGET_NAME} ${OVR_MOBILE_LIBRARIES})
     target_include_directories(${TARGET_NAME} PRIVATE ${OVR_MOBILE_INCLUDE_DIRS})
 
-    set(INSTALL_DIR ${HIFI_ANDROID_PRECOMPILED}/ovr_platform)
-    set(OVR_PLATFORM_INCLUDE_DIRS ${INSTALL_DIR}/Include)
-    set(OVR_PLATFORM_LIBRARY_DIR  ${INSTALL_DIR}/Android/libs/arm64-v8a)
-    set(OVR_PLATFORM_LIBRARY ${OVR_PLATFORM_LIBRARY_DIR}/libovrplatformloader.so)
-    target_link_libraries(${TARGET_NAME} ${OVR_PLATFORM_LIBRARY})
-    target_include_directories(${TARGET_NAME} PRIVATE ${OVR_PLATFORM_INCLUDE_DIRS})
-    message("QQQ OVR_PLATFORM_INCLUDE_DIRS ${OVR_PLATFORM_INCLUDE_DIRS}")
+  
 endmacro()
