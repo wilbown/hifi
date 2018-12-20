@@ -31,12 +31,12 @@
 
         // Track controller grabbing state.
         HIFI_OBJECT_MANIPULATION_CHANNEL = "Hifi-Object-Manipulation",
-        grabbingHand = RIGHT_HAND,
+        grabbingHand = NO_HAND,
         grabbedItem = null,
 
         // Miscellaneous.
         tablet = Tablet.getTablet("com.highfidelity.interface.tablet.system"),
-        DEBUG = false
+        DEBUG = false;
 
 
     function debug(message) {
@@ -244,7 +244,6 @@
         }
 
         function playSound(sound, volume) {
-			console.log("AAAA: Playing sound");
             Audio.playSound(sound, {
                 position: uiHand === LEFT_HAND ? MyAvatar.getLeftPalmPosition() : MyAvatar.getRightPalmPosition(),
                 volume: volume,
@@ -276,7 +275,7 @@
 
         function show(hand) {
             var initialScale = 0.01; // Start very small.
-			console.log("AAAA: SHOW TABLET");
+
             uiHand = hand;
 
             Overlays.editOverlay(miniOverlay, {
@@ -321,7 +320,6 @@
         }
 
         function startExpandingTablet(hand) {
-			console.log("AAAA: START EXPANDING TABLET");
             // Expansion details.
             if (hand === uiHand) {
                 miniExpandHandles = MINI_EXPAND_HANDLES;
@@ -440,7 +438,6 @@
         }
 
         function hide() {
-			console.log("AAAA: HIDING ");
             Overlays.editOverlay(miniOverlay, {
                 visible: false
             });
@@ -450,7 +447,6 @@
         }
 
         function create() {
-			console.log("AAAA: CREATING tablet ");
             miniOverlay = Overlays.addOverlay("model", {
                 url: MINI_MODEL,
                 dimensions: Vec3.multiply(MyAvatar.sensorToWorldScale, MINI_DIMENSIONS),
@@ -458,7 +454,7 @@
                 grabbable: true,
                 showKeyboardFocusHighlight: false,
                 displayInFront: true,
-                visible: true
+                visible: false
             });
             miniUIOverlay = Overlays.addOverlay("web3d", {
                 url: MINI_UI_HTML,
@@ -471,17 +467,16 @@
                 grabbable: false,
                 showKeyboardFocusHighlight: false,
                 displayInFront: true,
-                visible: true
+                visible: false
             });
 
-            miniUIOverlayEnabled = true; // This and alpha = 0 hides overlay while its content is being created.
+            miniUIOverlayEnabled = false; // This and alpha = 0 hides overlay while its content is being created.
 
             miniOverlayObject = Overlays.getOverlayObject(miniUIOverlay);
             miniOverlayObject.webEventReceived.connect(onWebEventReceived);
         }
 
         function destroy() {
-			console.log("destroying");
             if (miniOverlayObject) {
                 miniOverlayObject.webEventReceived.disconnect(onWebEventReceived);
                 Overlays.deleteOverlay(miniUIOverlay);
