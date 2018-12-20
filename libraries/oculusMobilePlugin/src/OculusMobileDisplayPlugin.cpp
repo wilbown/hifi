@@ -34,8 +34,10 @@ using namespace ovr;
 
 const char* OculusMobileDisplayPlugin::NAME { "Oculus Rift" };
 //thread_local bool renderThread = false;
+#define OCULUS_APP_ID 2331695256865113
 
 OculusMobileDisplayPlugin::OculusMobileDisplayPlugin() {
+
 }
 
 OculusMobileDisplayPlugin::~OculusMobileDisplayPlugin() {
@@ -44,6 +46,7 @@ OculusMobileDisplayPlugin::~OculusMobileDisplayPlugin() {
 void OculusMobileDisplayPlugin::init() {
     Parent::init();
     initVr();
+
     emit deviceConnected(getName());
 }
 
@@ -177,7 +180,8 @@ static void goToDevMobile() {
     auto addressManager = DependencyManager::get<AddressManager>();
     auto currentAddress = addressManager->currentAddress().toString().toStdString();
     if (std::string::npos == currentAddress.find("dev-mobile")) {
-        addressManager->handleLookupString("hifi://dev-mobile/495.236,501.017,482.434/0,0.97452,0,-0.224301");
+        //addressManager->handleLookupString("hifi://dev-mobile/495.236,501.017,482.434/0,0.97452,0,-0.224301");
+        addressManager->handleLookupString("hifi://dev-mobile/0,-1,1");
     }
 }
 

@@ -695,6 +695,7 @@ void Keyboard::setLayerIndex(int layerIndex) {
 }
 
 void Keyboard::loadKeyboardFile(const QString& keyboardFile) {
+    return;
     if (keyboardFile.isEmpty()) {
         return;
     }

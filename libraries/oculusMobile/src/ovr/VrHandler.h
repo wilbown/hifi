@@ -28,7 +28,7 @@ public:
 
     static bool withOvrMobile(const OvrMobileTask& task);
 protected:
-    static void initVr();
+    static void initVr(const char* appId = nullptr);
     static void shutdownVr();
     static bool withOvrJava(const OvrJavaTask& task);
     void presentFrame(uint32_t textureId, const glm::uvec2& size, const ovrTracking2& tracking) const;
