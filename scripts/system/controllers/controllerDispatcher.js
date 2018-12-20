@@ -32,8 +32,8 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
     var BASIC_TIMER_INTERVAL_MS = 1000 / TARGET_UPDATE_HZ;
 
     var PROFILE = false;
-    var DEBUG = false;
-    var SHOW_GRAB_SPHERE = false;
+    var DEBUG = true;
+    var SHOW_GRAB_SPHERE = true;
 
 
     if (typeof Test !== "undefined") {
