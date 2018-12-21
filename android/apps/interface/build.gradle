@@ -1,47 +1,9 @@
 import org.apache.tools.ant.taskdefs.condition.Os
 
-buildscript {
-    repositories {
-        google()
-        jcenter()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:3.2.1'
-    }
-}
-
-allprojects {
-    repositories {
-        google()
-        jcenter()
-    }
-}
-
-task renameHifiACTaskDebug() {
-    doLast {
-        def sourceFile = new File("${appDir}/build/intermediates/cmake/debug/obj/arm64-v8a/","libhifiCodec.so")
-        def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
-        copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
-    }
-}
-task renameHifiACTaskRelease(type: Copy) {
-    doLast {
-        def sourceFile = new File("${appDir}/build/intermediates/cmake/release/obj/arm64-v8a/","libhifiCodec.so")
-        def destinationFile = new File("${appDir}/src/main/jniLibs/arm64-v8a", "libplugins_libhifiCodec.so")
-        copy { from sourceFile;  into destinationFile.parent;  rename(sourceFile.name, destinationFile.name) }
-    }
-}
-
 apply plugin: 'com.android.application'
-ext {
-    RELEASE_NUMBER = project.hasProperty('RELEASE_NUMBER') ? project.getProperty('RELEASE_NUMBER') : '0'
-    VERSION_CODE = project.hasProperty('VERSION_CODE') ? project.getProperty('VERSION_CODE') : '0'
-    RELEASE_TYPE = project.hasProperty('RELEASE_TYPE') ? project.getProperty('RELEASE_TYPE') : 'DEV'
-    STABLE_BUILD = project.hasProperty('STABLE_BUILD') ? project.getProperty('STABLE_BUILD') : '0'
-}
 
 android {
-    compileSdkVersion 28
+    compileSdkVersion 26
     //buildToolsVersion '27.0.3'
 
     def appVersionCode = Integer.valueOf(VERSION_CODE ?: 1)
@@ -50,7 +12,7 @@ android {
     defaultConfig {
         applicationId "io.highfidelity.hifiinterface"
         minSdkVersion 24
-        targetSdkVersion 28
+        targetSdkVersion 26
         versionCode appVersionCode
         versionName appVersionName
         ndk { abiFilters 'arm64-v8a' }
@@ -119,7 +81,6 @@ android {
         variant.externalNativeBuildTasks.each { task ->
             variant.mergeResources.dependsOn(task)
             if (Os.isFamily(Os.FAMILY_UNIX)) {
-                // FIXME
                 def uploadDumpSymsTask = rootProject.getTasksByName("uploadBreakpadDumpSyms${variant.name.capitalize()}", false).first()
                 def runDumpSymsTask = rootProject.getTasksByName("runBreakpadDumpSyms${variant.name.capitalize()}", false).first()
                 def renameHifiACTask = rootProject.getTasksByName("renameHifiACTask${variant.name.capitalize()}", false).first()
@@ -196,6 +157,5 @@ dependencies {
     api 'com.sothree.slidinguppanel:library:3.4.0'
 
     implementation fileTree(include: ['*.jar'], dir: '../../libraries/qt/libs')
-    implementation project(':oculus')
     implementation project(':qt')
 }
