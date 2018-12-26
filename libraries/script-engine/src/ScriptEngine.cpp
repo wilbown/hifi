@@ -83,6 +83,9 @@
 #include "../../midi/src/Midi.h"        // FIXME why won't a simpler include work?
 #include "MIDIEvent.h"
 
+#include "../../gym/src/Gym.h"        // FIXME why won't a simpler include work?
+#include "GymEvent.h"
+
 const QString ScriptEngine::_SETTINGS_ENABLE_EXTENDED_EXCEPTIONS {
     "com.highfidelity.experimental.enableExtendedJSExceptions"
 };
@@ -662,6 +665,7 @@ void ScriptEngine::init() {
     // register various meta-types
     registerMetaTypes(this);
     registerMIDIMetaTypes(this);
+    registerGymMetaTypes(this);
     registerEventTypes(this);
     registerMenuItemProperties(this);
     registerAnimationTypes(this);
@@ -717,6 +721,7 @@ void ScriptEngine::init() {
     registerGlobalObject("Audio", DependencyManager::get<AudioScriptingInterface>().data());
 
     registerGlobalObject("Midi", DependencyManager::get<Midi>().data());
+    registerGlobalObject("Gym", DependencyManager::get<Gym>().data());
 
     registerGlobalObject("Entities", entityScriptingInterface.data());
     registerFunction("Entities", "getMultipleEntityProperties", EntityScriptingInterface::getMultipleEntityProperties);

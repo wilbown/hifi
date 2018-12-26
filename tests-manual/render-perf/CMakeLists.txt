@@ -19,7 +19,7 @@ link_hifi_libraries(
     render render-utils 
     graphics hfm fbx model-networking graphics-scripting
     entities entities-renderer audio avatars script-engine 
-    physics procedural midi qml ui
+    physics procedural midi gym qml ui
     ${PLATFORM_GL_BACKEND}
 )
 

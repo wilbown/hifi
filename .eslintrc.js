@@ -46,6 +46,7 @@ module.exports = {
         "Menu": false,
         "Messages": false,
         "Midi": false,
+        "Gym": false,
         "ModelCache": false,
         "module": false,
         "MyAvatar": false,

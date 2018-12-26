@@ -50,6 +50,7 @@ exports.handlers = {
             '../../libraries/graphics-scripting/src/graphics-scripting/',
             '../../libraries/input-plugins/src/input-plugins',
             '../../libraries/midi/src',
+            '../../libraries/gym/src',
             '../../libraries/model-networking/src/model-networking/',
             '../../libraries/networking/src',
             '../../libraries/octree/src',
