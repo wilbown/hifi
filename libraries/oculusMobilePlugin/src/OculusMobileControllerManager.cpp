@@ -217,7 +217,7 @@ private:
         }
 
         void stopHapticPulse() {
-            bool sessionSuccess = ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
+            ovr::VrHandler::withOvrMobile([&](ovrMobile* session){
                 vrapi_SetHapticVibrationSimple(session, caps.Header.DeviceID, 0.0f);
             });
         }

@@ -8,6 +8,7 @@ link_hifi_libraries(
 )
 target_opengl()
 target_bullet()
+target_oculus_mobile()
 
 add_subdirectory("${CMAKE_SOURCE_DIR}/interface" "libraries/interface")
 include_directories("${CMAKE_SOURCE_DIR}/interface/src")

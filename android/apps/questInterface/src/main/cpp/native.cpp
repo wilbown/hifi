@@ -22,20 +22,31 @@
 #include <AndroidHelper.h>
 #include <udt/PacketHeaders.h>
 
-AAssetManager* g_assetManager = nullptr;
+#include <OVR_Platform.h>
+#include <OVR_Functions_Voip.h>
 
+void initOculusPlatform(JNIEnv* env, jobject obj) {
+    static std::once_flag once;
+    std::call_once(once, [&]{
+        static const char* appID = "2343652845669354";
+        if (ovr_PlatformInitializeAndroid(appID, obj, env) != ovrPlatformInitialize_Success) {
+            __android_log_write(ANDROID_LOG_WARN, "QQQ", "Failed to init platform SDK");
+            return;
+        }
+        ovr_Voip_SetSystemVoipSuppressed(true);
+    });
+}
 
 extern "C" {
 
-JNIEXPORT jstring JNICALL
-Java_io_highfidelity_hifiinterface_InterfaceActivity_getAssetTargetPath(JNIEnv* env, jobject obj) {
-    return env->NewStringUTF(QStandardPaths::writableLocation(QStandardPaths::CacheLocation).toUtf8().data());
+JNIEXPORT void JNICALL
+Java_io_highfidelity_questInterface_MainActivity_nativeInitOculusPlatform(JNIEnv* env, jobject obj) {
+    initOculusPlatform(env, obj);
 }
 
-
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_InterfaceActivity_nativeOnCreate(JNIEnv* env, jobject obj, jobject asset_mgr) {
-    g_assetManager = AAssetManager_fromJava(env, asset_mgr);
+Java_io_highfidelity_questInterface_MainActivity_nativeOnCreate(JNIEnv* env, jobject obj) {
+    initOculusPlatform(env, obj);
     qRegisterMetaType<QAndroidJniObject>("QAndroidJniObject");
 //  interfaceActivity = QAndroidJniObject(obj);
 //    QObject::connect(&AndroidHelper::instance(), &AndroidHelper::qtAppLoadComplete, []() {
@@ -46,27 +57,27 @@ Java_io_highfidelity_hifiinterface_InterfaceActivity_nativeOnCreate(JNIEnv* env,
 }
 
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_InterfaceActivity_nativeOnDestroy(JNIEnv* env, jobject obj) {
+Java_io_highfidelity_questInterface_MainActivity_nativeOnDestroy(JNIEnv* env, jobject obj) {
 }
 
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_SplashActivity_registerLoadCompleteListener(JNIEnv *env,
+Java_io_highfidelity_questInterface_SplashActivity_registerLoadCompleteListener(JNIEnv *env,
                                                                                jobject instance) {
 
 }
 
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_InterfaceActivity_nativeOnPause(JNIEnv *env, jobject obj) {
+Java_io_highfidelity_questInterface_MainActivity_nativeOnPause(JNIEnv *env, jobject obj) {
     AndroidHelper::instance().notifyEnterBackground();
 }
 
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_InterfaceActivity_nativeOnResume(JNIEnv *env, jobject obj) {
+Java_io_highfidelity_questInterface_MainActivity_nativeOnResume(JNIEnv *env, jobject obj) {
     AndroidHelper::instance().notifyEnterForeground();
 }
 
 JNIEXPORT void JNICALL
-Java_io_highfidelity_hifiinterface_receiver_HeadsetStateReceiver_notifyHeadsetOn(JNIEnv *env,
+Java_io_highfidelity_questInterface_receiver_HeadsetStateReceiver_notifyHeadsetOn(JNIEnv *env,
                                                                                  jobject instance,
                                                                                  jboolean pluggedIn) {
     AndroidHelper::instance().notifyHeadsetOn(pluggedIn);
