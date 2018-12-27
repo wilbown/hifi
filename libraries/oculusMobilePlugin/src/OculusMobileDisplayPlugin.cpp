@@ -223,12 +223,12 @@ bool OculusMobileDisplayPlugin::beginFrameRender(uint32_t frameIndex) {
        });
     }
 
-     static uint32_t count = 0;
-     if ((++count % 1000) == 0) {
-         AbstractViewStateInterface::instance()->postLambdaEvent([] {
-             goToDevMobile();
-         });
-     }
+    //  static uint32_t count = 0;
+    //  if ((++count % 1000) == 0) {
+    //      AbstractViewStateInterface::instance()->postLambdaEvent([] {
+    //          goToDevMobile();
+    //      });
+    //  }
 
     return result && Parent::beginFrameRender(frameIndex);
 }
