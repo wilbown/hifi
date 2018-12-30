@@ -26,7 +26,7 @@
 #ifndef __ZMQ_HPP_INCLUDED__
 #define __ZMQ_HPP_INCLUDED__
 
-#define __cplusplus 201402L
+// #define __cplusplus 201402L
 
 #if (__cplusplus >= 201402L)
 #define ZMQ_DEPRECATED(msg) [[deprecated(msg)]]

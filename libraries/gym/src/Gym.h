@@ -12,6 +12,7 @@
 #define hifi_Gym_h
 
 #include <QtCore/QObject>
+#include <QtCore/QUuid>
 #include <QAbstractNativeEventFilter>
 #include <DependencyManager.h>
 
@@ -30,10 +31,10 @@ class Gym : public QObject, public Dependency {
     SINGLETON_DEPENDENCY
 
 public:
-    void gymReceived(int agent, int action);  // relay an action to Javascript (using emit gymMessage)
-    void gymAgentChange();  // relay agent change to Javascript (using emit gymReset)
-    void sendRawMessage(int agent, int raw);  // relay raw message to GYM outputs
-    void sendMessage(int agent, int observation, float reward, bool done, int info);  // relay a message to GYM outputs
+    void gymReceived(int agent, int action);  // revieved message from agent, relay to actor script (using emit gymMessage)
+    void gymAgentChange();  // relay agent change to actor script (using emit gymReset)
+    void sendRawMessage(int agent, int raw);  // send a raw message to GYM
+    void sendMessage(int agent, int observation, float reward, bool done, int info);  // send a formatted message to GYM
 
 private:
     void GymInProc(int hGymIn, int wMsg, int dwParam1);
@@ -47,17 +48,24 @@ signals:
 public slots:
 
     /**jsdoc
-     * Send Raw packet to a particular agent.
-     * @function Gym.sendRawDword
-     * @param {number} agent - Integer agent number.
-     * @param {number} raw - Integer (DWORD) raw GYM message.
+     * Register an actor entity to recieve messages from an agent
+     * @function Gym.registerActor
+     * @param {uuid} actor - entityID of actor
      */
-    Q_INVOKABLE void sendRawDword(int agent, int raw);
+    Q_INVOKABLE void registerActor(QUuid actor);
+
+    /**jsdoc
+     * Send raw message to a particular agent.
+     * @function Gym.sendRawGymMessage
+     * @param {number} agent - agentID
+     * @param {number} raw - raw GYM message.
+     */
+    Q_INVOKABLE void sendRawGymMessage(int agent, int raw);
 
     /**jsdoc
      * Send GYM message to a particular agent.
      * @function Gym.sendGymMessage
-     * @param {number} agent - Integer agent number.
+     * @param {number} agent
      * @param {number} observation - 
      * @param {number} reward - 
      * @param {number} done - 

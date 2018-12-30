@@ -23,7 +23,8 @@
                 print("GymSphere.gymMessage: "+JSON.stringify(eventData));
                 Entities.editEntity(entityID, { color: { red: 2*eventData.action, green: 2*eventData.action, blue: 2*eventData.action} });
             });
-            Gym.sendRawDword(0, 23);
+            Gym.registerActor(entityID);
+            // Gym.sendRawGymMessage(0, 23);
             print("GymSphere.preload ID:" + entityID);
         },
         unload: function(entityID) {

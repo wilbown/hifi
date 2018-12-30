@@ -9,8 +9,12 @@
 //
 
 #include "Gym.h"
+#include <QtCore/QUuid>
 
 #include <zmq.hpp>
+#include <pthread.h>
+#include <cassert>
+#include <sstream>
 #include <string>
 #include <iostream>
 #ifndef _WIN32
@@ -95,6 +99,47 @@ void Gym::gymAgentChange() {
     emit gymReset();
 }
 
+void *worker_routine(void *arg)
+{
+    //  Prepare our context and sockets
+    zmq::context_t *context = (zmq::context_t *)arg;
+    zmq::socket_t socket(*context, ZMQ_REP);
+    socket.bind("tcp://127.0.0.1:5558");
+
+    qDebug() << "Gym::worker connected?[" << socket.connected() << "]";
+
+    while (true) {
+        //  Wait for next request from client
+        zmq::message_t request;
+        socket.recv(&request);
+
+        // qDebug() << "Gym::Received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
+        // qDebug() << "Gym::Received request[" << request.size() << "]";
+
+        float action1, action2, action3;
+        
+        std::istringstream iss(static_cast<char*>(request.data()));
+        iss >> action1 >> action2 >> action3;
+
+        qDebug() << "Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+
+
+        //  Do some 'work'
+        sleep(1);
+
+        //  Send reply back to client
+        // zmq::message_t reply(5);
+        // memcpy(reply.data(), "World", 5);
+        zmq::message_t reply(request.size());
+        memcpy(reply.data(), request.data(), request.size());
+        socket.send(reply);
+    }
+    return (NULL);
+}
+
+// Global ZeroMQ context
+static zmq::context_t context(1);
+
 void Gym::GymSetup() {
     gymhin.clear();
     
@@ -103,27 +148,16 @@ void Gym::GymSetup() {
     // GymInProc(0x34552, MIM_OPEN, 0x0);
     // GymInProc(0x34552, MIM_DATA, 0x2);
 
-    //  Prepare our context and socket
-    zmq::context_t context(1);
-    zmq::socket_t socket(context, ZMQ_REP);
-    socket.bind("tcp://*:5555");
+    // int major, minor, patch;
+    // zmq_version (&major, &minor, &patch);
+    // qDebug() << "Current 0MQ version is " << major << "." << minor << "." << patch;
 
-    while (true) {
-        zmq::message_t request;
-
-        //  Wait for next request from client
-        socket.recv(&request);
-
-        qDebug() << "Received Hello";
-
-        //  Do some 'work'
-    	sleep(1);
-
-        //  Send reply back to client
-        zmq::message_t reply(5);
-        memcpy(reply.data(), "World", 5);
-        socket.send(reply);
+    //  Launch pool of ZeroMQ worker threads
+    for (int thread_nbr = 0; thread_nbr < 1; thread_nbr++) {
+        pthread_t worker;
+        pthread_create(&worker, NULL, worker_routine, (void *)&context);
     }
+    qDebug() << "Gym::zmq worker threads created";
 }
 
 void Gym::GymCleanup() {
@@ -152,7 +186,12 @@ Gym::~Gym() {
 
 // Public scripting (Q_INVOKABLE)
 
-void Gym::sendRawDword(int agent, int raw) {
+void Gym::registerActor(QUuid actor) {
+    qDebug() << "Gym::registerActor actor[" << actor << "]";
+    // match actor ID with port number and save to some persistant storage
+}
+
+void Gym::sendRawGymMessage(int agent, int raw) {
     sendRawMessage(agent, raw);
 }
 
