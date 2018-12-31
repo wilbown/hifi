@@ -31,34 +31,27 @@
 static Gym* instance = NULL;        // communicate this to non-class callbacks
 static bool broadcastEnabled = false;
 
-// Stores the actors and agents that have connected
-static std::map<QUuid, int> gymmap;
 static int portIter = 5558; //current used port number
 
+// Stores the agents that have connected
+QList<int> gymagents;
 
-void Gym::sendRawMessage(int agent, float raw) {
+void Gym::gymAgentChange(int agent) {
+    emit onGymAgentChange(agent);
+}
+
+void Gym::sendMessage(int agent, QVariantMap message) { // observation = object, info = dictionary
     if (broadcastEnabled) {
     } else {
-        qDebug() << "Gym::sendRawMessage agent[" << agent << "] raw[" << raw << "]";
-        // gymOutShortMsg(gymmap[agent], raw);
+        qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << message["observation"] << "] reward[" << message["reward"] << "] done[" << message["done"] << "] info[" << message["info"] << "]";
     }
 }
 
-void Gym::sendMessage(int agent, int observation, float reward, bool done, int info) { // observation = object, info = dictionary
-        qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << observation << "] reward[" << reward << "] done[" << done << "] info[" << info << "]";
-}
-
-int Gym::gymReceived(int agent, float action) {
+void Gym::gymMessage(int agent, float action) {
     QVariantMap eventData;
     eventData["agent"] = agent;
     eventData["action"] = action;
-    emit onGymMessage(eventData); // TODO can I send to particular actor only?
-    // TODO return instance saved observation data indexed by actor, are there thread issues with javascript writing the data as I am reading it? 
-    return 23;
-}
-
-void Gym::gymAgentChange() {
-    emit onGymAgentChange();
+    emit onGymMessage(eventData);
 }
 
 void *worker_routine(void *arg)
@@ -88,14 +81,14 @@ void *worker_routine(void *arg)
 
         qDebug() << "Gym::zmq-worker::Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
 
-        if (gymmap.empty()) {
-            qDebug() << "Gym::zmq-worker::No actors available";
-            continue;
-        }
-        // if(gymmap.find(uuid) != gymmap.end())
+        // if (gymagents.empty()) {
+        //     qDebug() << "Gym::zmq-worker::No actors available";
+        //     continue;
+        // }
+        // if(gymagents.find(uuid) != gymagents.end())
 
-        int test = instance->gymReceived(port, action1);        // notify the javascript
-        qDebug() << "Gym::zmq-worker::test return [" << test << "]";
+        instance->gymMessage(port, action1);        // notify the javascript
+        // qDebug() << "Gym::zmq-worker::test return [" << test << "]";
 
         // instance->gymAgentChange(); //only on first connection
 
@@ -116,9 +109,10 @@ void *worker_routine(void *arg)
 static zmq::context_t context(1);
 
 void Gym::GymSetup() {
-    gymmap.clear();
-    
     qDebug() << "Gym::GymSetup";
+
+    gymagents.clear();
+
     // test
     // GymInProc(0x34552, MIM_OPEN, 0x0);
     // GymInProc(0x34552, MIM_DATA, 0x2);
@@ -134,18 +128,16 @@ void Gym::GymSetup() {
     }
     qDebug() << "Gym::zmq worker threads created";
 }
-
 void Gym::GymCleanup() {
     qDebug() << "Gym::GymCleanup";
     
-    gymmap.clear();
+    gymagents.clear();
 }
 
 Gym::Gym() {
     instance = this;
     GymSetup();
 }
-
 Gym::~Gym() {
     GymCleanup();
 }
@@ -153,30 +145,12 @@ Gym::~Gym() {
 
 // Public scripting (Q_INVOKABLE)
 
-void Gym::registerActor(QUuid actor) {
-    qDebug() << "Gym::registerActor actor[" << actor << "]";
-    gymmap[actor] = -1;
-    // match actor ID with port number and save to some persistant storage
+QList<int> Gym::listGymAgents() {
+    return gymagents;
 }
 
-void Gym::sendRawGymMessage(int agent, float raw) {
-    sendRawMessage(agent, raw);
-}
-
-void Gym::sendGymMessage(int agent, int observation, float reward, bool done, int info) {
-    sendMessage(agent, observation, reward, done, info);
-}
-
-void Gym::resetAgents() {
-    // Send done = true
-}
-
-QStringList Gym::listGymAgents() {
-    QStringList rv;
-    for (uint i = 0; i < gymmap.size(); i++) {
-        rv.append("25");
-    }
-    return rv;
+void Gym::sendGymMessage(int agent, QVariantMap message) {
+    sendMessage(agent, message);
 }
 
 void Gym::broadcastEnable(bool enable) {

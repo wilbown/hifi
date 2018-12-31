@@ -9,62 +9,88 @@
 
 (function() {
 
-    var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
-    var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
+    // var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
+    // var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
 
-    // var _this;
+    var _this;
     function GymSphere() {
-        // _this = this;
+        _this = this;
     }
 
     GymSphere.prototype = {
         entityID: null,
-        clicked: false,
+        agent: 5558,
 
-        _observation: 0,
-        _reward: 0.0,
-        _done: false,
-        _info: 0,
-
-        // class events
-        update: function() {
-            print("GymSphere.update entityID:" + this.entityID);
+        // clicked: false,
+        environment: {
+            observation: [0.0,0.0,0.0,0.0],
+            reward: 0.0,
+            done: false,
+            info: {error: null},
         },
-        handleGymMessage: function(message) {
-            print("GymSphere.handleGymMessage entityID:" + entityID);
-            // print("GymSphere.handleGymMessage: "+JSON.stringify(message));
-            Entities.editEntity(entityID, { color: { red: 2*message.action, green: 2*message.action, blue: 2*message.action} });
-            Gym.sendRawGymMessage(message.agent, message.action);
+        
+
+        // remote global events, not in class namespace
+        
+        // update: function() {
+        //     print("GymSphere.update entityID:" + _this.entityID);
+        //     // Script.update.disconnect(_this.update);
+        // },
+        handleGymAgentChange: function(_agent) {
+            print("GymSphere.handleGymAgentChange entityID:" + _this.entityID);
+            _this.agent = _agent;
+
+            // TODO send gym action_space and observation_space vars to agent when first connecting
+            message = {
+                action_space: {low: [-1.0, -1.0, -1.0], high: [-1.0, -1.0, -1.0], type:"float32"},
+                observation_space: {low: [-1.0, -1.0, -1.0], high: [-1.0, -1.0, -1.0], type:"float32"},
+            };
+            Gym.sendGymMessage(_this.agent, message);
+        },
+        handleGymMessage: function(_message) {
+            print("GymSphere.handleGymMessage entityID:" + _this.entityID);
+            // print("GymSphere.handleGymMessage: "+JSON.stringify(_message));
+
+            if (_message.agent != _this.agent) return; //ignore other agents
+
+            // Execute action
+            Entities.editEntity(_this.entityID, { color: { red: 2*_message.action, green: 2*_message.action, blue: 2*_message.action} });
+
+            // Return my current environment
+            _this.environment.reward = _message.action;
+            Gym.sendGymMessage(_this.agent, _this.environment);
         },
 
-        // builtin events
-        // mousePressOnEntity: function(entityID, mouseEvent) { 
-        //     print("GymSphere.mousePressOnEntity entityID:" + entityID);
-        //     if (this.clicked) {
-        //         Entities.editEntity(entityID, { color: COLOR_TEAL });
-        //         this.clicked = false;
+
+        // builtin class events
+
+        // mousePressOnEntity: function(_entityID, mouseEvent) { 
+        //     print("GymSphere.mousePressOnEntity entityID:" + _entityID);
+        //     if (_this.clicked) {
+        //         Entities.editEntity(_this.entityID, { color: COLOR_TEAL });
+        //         _this.clicked = false;
         //     } else {
-        //         Entities.editEntity(entityID, { color: COLOR_YELLOW });
-        //         this.clicked = true;
+        //         Entities.editEntity(_this.entityID, { color: COLOR_YELLOW });
+        //         _this.clicked = true;
         //     }
         // },
-        preload: function(entityIDx) {
-            print("GymSphere.preload entityID:" + entityIDx);
-            entityID = entityIDx;
+        preload: function(_entityID) {
+            print("GymSphere.preload entityID:" + _entityID);
+            _this.entityID = _entityID;
 
-            // Script.update.connect(this.update);
-
-            Gym.onGymMessage.connect(this.handleGymMessage);
-            Gym.registerActor(entityID);
-
+            Gym.onGymAgentChange.connect(_this.handleGymAgentChange);
+            Gym.onGymMessage.connect(_this.handleGymMessage);
+            // Script.update.connect(_this.update);
         },
-        unload: function(entityIDx) {
-            print("GymSphere.unload entityID:" + entityIDx);
-            
-            Gym.onGymMessage.disconnect(this.handleGymMessage);
+        unload: function(_entityID) {
+            print("GymSphere.unload entityID:" + _entityID);
 
-            // Script.update.disconnect(this.update);
+            // _this.environment.done = true;
+            // Gym.sendGymMessage(_this.agent, _this.environment);
 
+            // Script.update.disconnect(_this.update);
+            Gym.onGymMessage.disconnect(_this.handleGymMessage);
+            Gym.onGymAgentChange.disconnect(_this.handleGymAgentChange);
         },
 
     };
