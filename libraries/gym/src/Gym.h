@@ -31,9 +31,9 @@ class Gym : public QObject, public Dependency {
     SINGLETON_DEPENDENCY
 
 public:
-    void gymReceived(int agent, int action);  // revieved message from agent, relay to actor script (using emit gymMessage)
+    int gymReceived(int agent, float action);  // revieved message from agent, relay to actor script (using emit gymMessage)
     void gymAgentChange();  // relay agent change to actor script (using emit gymReset)
-    void sendRawMessage(int agent, int raw);  // send a raw message to GYM
+    void sendRawMessage(int agent, float raw);  // send a raw message to GYM
     void sendMessage(int agent, int observation, float reward, bool done, int info);  // send a formatted message to GYM
 
 private:
@@ -42,8 +42,8 @@ private:
     void GymCleanup();
 
 signals:
-    void gymMessage(QVariantMap eventData);
-    void gymReset();
+    void onGymMessage(QVariantMap message);
+    void onGymAgentChange();
 
 public slots:
 
@@ -60,7 +60,7 @@ public slots:
      * @param {number} agent - agentID
      * @param {number} raw - raw GYM message.
      */
-    Q_INVOKABLE void sendRawGymMessage(int agent, int raw);
+    Q_INVOKABLE void sendRawGymMessage(int agent, float raw);
 
     /**jsdoc
      * Send GYM message to a particular agent.

@@ -8,44 +8,66 @@
 //
 
 (function() {
-    var _this;
 
+    var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
+    var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
+
+    // var _this;
     function GymSphere() {
-        _this = this;
-        this.clicked = false;
-        return;
+        // _this = this;
     }
-    
+
     GymSphere.prototype = {
-        preload: function(entityID) {
-            this.entityID = entityID;
-            Gym.gymMessage.connect(function(eventData) {
-                print("GymSphere.gymMessage: "+JSON.stringify(eventData));
-                Entities.editEntity(entityID, { color: { red: 2*eventData.action, green: 2*eventData.action, blue: 2*eventData.action} });
-            });
-            Gym.registerActor(entityID);
-            // Gym.sendRawGymMessage(0, 23);
-            print("GymSphere.preload ID:" + entityID);
+        entityID: null,
+        clicked: false,
+
+        _observation: 0,
+        _reward: 0.0,
+        _done: false,
+        _info: 0,
+
+        // class events
+        update: function() {
+            print("GymSphere.update entityID:" + this.entityID);
         },
-        unload: function(entityID) {
-            print("GymSphere.unload");
+        handleGymMessage: function(message) {
+            print("GymSphere.handleGymMessage entityID:" + entityID);
+            // print("GymSphere.handleGymMessage: "+JSON.stringify(message));
+            Entities.editEntity(entityID, { color: { red: 2*message.action, green: 2*message.action, blue: 2*message.action} });
+            Gym.sendRawGymMessage(message.agent, message.action);
         },
 
-        mousePressOnEntity: function(entityID, mouseEvent) { 
-            print("GymSphere.mouseMoveOnEntity");
-            if (this.clicked) {
-                Entities.editEntity(entityID, { color: { red: 0, green: 255, blue: 255} });
-                this.clicked = false;
-                // Gym.sendRawDword(0, 1);
-            } else {
-                Entities.editEntity(entityID, { color: { red: 255, green: 255, blue: 0} });
-                this.clicked = true;
-                // Gym.sendRawDword(0, 0);
-            }
-        }
+        // builtin events
+        // mousePressOnEntity: function(entityID, mouseEvent) { 
+        //     print("GymSphere.mousePressOnEntity entityID:" + entityID);
+        //     if (this.clicked) {
+        //         Entities.editEntity(entityID, { color: COLOR_TEAL });
+        //         this.clicked = false;
+        //     } else {
+        //         Entities.editEntity(entityID, { color: COLOR_YELLOW });
+        //         this.clicked = true;
+        //     }
+        // },
+        preload: function(entityIDx) {
+            print("GymSphere.preload entityID:" + entityIDx);
+            entityID = entityIDx;
+
+            // Script.update.connect(this.update);
+
+            Gym.onGymMessage.connect(this.handleGymMessage);
+            Gym.registerActor(entityID);
+
+        },
+        unload: function(entityIDx) {
+            print("GymSphere.unload entityID:" + entityIDx);
+            
+            Gym.onGymMessage.disconnect(this.handleGymMessage);
+
+            // Script.update.disconnect(this.update);
+
+        },
 
     };
 
-    // entity scripts should return a newly constructed object of our type
     return new GymSphere();
 });

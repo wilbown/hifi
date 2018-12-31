@@ -31,98 +31,73 @@
 static Gym* instance = NULL;        // communicate this to non-class callbacks
 static bool broadcastEnabled = false;
 
-// Stores the agents that have connected
-std::vector<int> gymhin;
+// Stores the actors and agents that have connected
+static std::map<QUuid, int> gymmap;
+static int portIter = 5558; //current used port number
 
-const int MIM_OPEN = 0x0;
-const int MIM_CLOSE = 0x1;
-const int MIM_DATA = 0x2;
 
-void Gym::GymInProc(int hGymIn, int wMsg, int dwParam1) {
-    switch (wMsg) {
-        case MIM_OPEN:
-            gymhin.push_back(hGymIn);
-            instance->gymAgentChange();
-            break;
-        case MIM_CLOSE:
-            for (uint i = 0; i < gymhin.size(); i++) {
-                if (gymhin[i] == hGymIn) {
-                    gymhin[i] = -1;
-                    instance->gymAgentChange();
-                }
-            }
-            break;
-        case MIM_DATA: {
-            int agent = -1;
-            for (uint i = 0; i < gymhin.size(); i++) {
-                if (gymhin[i] == hGymIn) {
-                    agent = i;
-                }
-            }
-            // if (agent == -1) {
-            //     gymhin.push_back(hGymIn);
-            //     agent = gymhin.size();
-            // }
-            
-            int action = dwParam1;
-            instance->gymReceived(agent, action);        // notify the javascript
-            break;
-        }
-    }
-}
-
-void Gym::sendRawMessage(int agent, int raw) {
+void Gym::sendRawMessage(int agent, float raw) {
     if (broadcastEnabled) {
-        for (uint i = 0; i < gymhin.size(); i++) {
-            if (gymhin[i] != -1) {
-                // gymOutShortMsg(gymhin[i], raw);
-            }
-        }
     } else {
         qDebug() << "Gym::sendRawMessage agent[" << agent << "] raw[" << raw << "]";
-        // gymOutShortMsg(gymhin[agent], raw);
+        // gymOutShortMsg(gymmap[agent], raw);
     }
 }
 
 void Gym::sendMessage(int agent, int observation, float reward, bool done, int info) { // observation = object, info = dictionary
-        qDebug() << "Gym::sendRawMessage agent[" << agent << "] observation[" << observation << "] reward[" << reward << "] done[" << done << "] info[" << info << "]";
+        qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << observation << "] reward[" << reward << "] done[" << done << "] info[" << info << "]";
 }
 
-void Gym::gymReceived(int agent, int action) {
+int Gym::gymReceived(int agent, float action) {
     QVariantMap eventData;
     eventData["agent"] = agent;
     eventData["action"] = action;
-    emit gymMessage(eventData);
+    emit onGymMessage(eventData); // TODO can I send to particular actor only?
+    // TODO return instance saved observation data indexed by actor, are there thread issues with javascript writing the data as I am reading it? 
+    return 23;
 }
 
 void Gym::gymAgentChange() {
-    emit gymReset();
+    emit onGymAgentChange();
 }
 
 void *worker_routine(void *arg)
 {
+    int port = portIter;
     //  Prepare our context and sockets
     zmq::context_t *context = (zmq::context_t *)arg;
     zmq::socket_t socket(*context, ZMQ_REP);
-    socket.bind("tcp://127.0.0.1:5558");
+    socket.bind("tcp://127.0.0.1:" + std::to_string(port));
 
-    qDebug() << "Gym::worker connected?[" << socket.connected() << "]";
+    qDebug() << "Gym::worker connected?[" << socket.connected() << "] port[" << port << "]";
+
+    portIter++;
 
     while (true) {
         //  Wait for next request from client
         zmq::message_t request;
         socket.recv(&request);
 
-        // qDebug() << "Gym::Received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
-        // qDebug() << "Gym::Received request[" << request.size() << "]";
+        // qDebug() << "Gym::zmq-worker::Received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
+        // qDebug() << "Gym::zmq-worker::Received request[" << request.size() << "]";
 
         float action1, action2, action3;
-        
+
         std::istringstream iss(static_cast<char*>(request.data()));
         iss >> action1 >> action2 >> action3;
 
-        qDebug() << "Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+        qDebug() << "Gym::zmq-worker::Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
 
+        if (gymmap.empty()) {
+            qDebug() << "Gym::zmq-worker::No actors available";
+            continue;
+        }
+        // if(gymmap.find(uuid) != gymmap.end())
+
+        int test = instance->gymReceived(port, action1);        // notify the javascript
+        qDebug() << "Gym::zmq-worker::test return [" << test << "]";
+
+        // instance->gymAgentChange(); //only on first connection
 
         //  Do some 'work'
         sleep(1);
@@ -141,7 +116,7 @@ void *worker_routine(void *arg)
 static zmq::context_t context(1);
 
 void Gym::GymSetup() {
-    gymhin.clear();
+    gymmap.clear();
     
     qDebug() << "Gym::GymSetup";
     // test
@@ -162,16 +137,8 @@ void Gym::GymSetup() {
 
 void Gym::GymCleanup() {
     qDebug() << "Gym::GymCleanup";
-    // test
-    // GymInProc(0x34552, MIM_CLOSE, 0x0);
-
-    for (uint i = 0; i < gymhin.size(); i++) {
-        if (gymhin[i] != -1) {
-            // gymInStop(gymhin[i]);
-            // gymInClose(gymhin[i]);
-        }
-    }
-    gymhin.clear();
+    
+    gymmap.clear();
 }
 
 Gym::Gym() {
@@ -188,10 +155,11 @@ Gym::~Gym() {
 
 void Gym::registerActor(QUuid actor) {
     qDebug() << "Gym::registerActor actor[" << actor << "]";
+    gymmap[actor] = -1;
     // match actor ID with port number and save to some persistant storage
 }
 
-void Gym::sendRawGymMessage(int agent, int raw) {
+void Gym::sendRawGymMessage(int agent, float raw) {
     sendRawMessage(agent, raw);
 }
 
@@ -205,7 +173,7 @@ void Gym::resetAgents() {
 
 QStringList Gym::listGymAgents() {
     QStringList rv;
-    for (uint i = 0; i < gymhin.size(); i++) {
+    for (uint i = 0; i < gymmap.size(); i++) {
         rv.append("25");
     }
     return rv;
