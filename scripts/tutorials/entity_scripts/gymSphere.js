@@ -22,8 +22,8 @@
         agent: 5558,
 
         // clicked: false,
-        environment: {
-            observation: [0.0,0.0,0.0,0.0],
+        environment: { // observation = object, info = dictionary
+            observation: [0.0, 0.0, 0.0, 0.0],
             reward: 0.0,
             done: false,
             info: {error: null},
@@ -42,8 +42,8 @@
 
             // TODO send gym action_space and observation_space vars to agent when first connecting
             message = {
-                action_space: {low: [-1.0, -1.0, -1.0], high: [-1.0, -1.0, -1.0], type:"float32"},
-                observation_space: {low: [-1.0, -1.0, -1.0], high: [-1.0, -1.0, -1.0], type:"float32"},
+                action_space: {low: [0.0, 0.0, 0.0], high: [1.0, 1.0, 1.0], type:"float32"},
+                observation_space: {low: [-1.0, -1.0, -1.0, -1.0], high: [1.0, 1.0, 1.0, 1.0], type:"float32"},
             };
             Gym.sendGymMessage(_this.agent, message);
         },
@@ -52,12 +52,13 @@
             // print("GymSphere.handleGymMessage: "+JSON.stringify(_message));
 
             if (_message.agent != _this.agent) return; //ignore other agents
+            action = _message.message.action;
 
             // Execute action
-            Entities.editEntity(_this.entityID, { color: { red: 2*_message.action, green: 2*_message.action, blue: 2*_message.action} });
+            Entities.editEntity(_this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
 
             // Return my current environment
-            _this.environment.reward = _message.action;
+            _this.environment.reward = action[0];
             Gym.sendGymMessage(_this.agent, _this.environment);
         },
 
