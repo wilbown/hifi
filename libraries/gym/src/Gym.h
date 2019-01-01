@@ -16,6 +16,7 @@
 #include <QAbstractNativeEventFilter>
 #include <DependencyManager.h>
 
+#include <zmq.hpp>
 #include <vector>
 #include <string>
 
@@ -40,7 +41,7 @@ private:
     void GymCleanup();
 
 signals:
-    void operate(const QString &parameter);
+    void startAgentListener(zmq::context_t *context);
     void onGymAgentChange(int agent); // notify new agent connected
     void onGymMessage(QVariantMap message); // relay new message from agent
 
@@ -76,12 +77,12 @@ public:
 };
 
 
-class Worker : public QObject
+class GymWorker : public QObject
 {
     Q_OBJECT
 
 public slots:
-    void doWork(const QString &parameter);
+    void doAgentListen(zmq::context_t *context);
 
 signals:
     void resultReady(const QString &result);
