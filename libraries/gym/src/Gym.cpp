@@ -10,6 +10,7 @@
 
 #include "Gym.h"
 #include <QtCore/QUuid>
+#include <QtCore/QThread>
 
 #include <zmq.hpp>
 #include <pthread.h>
@@ -54,59 +55,74 @@ void Gym::gymMessage(int agent, float action) {
     emit onGymMessage(eventData);
 }
 
-void *worker_routine(void *arg)
-{
-    int port = portIter;
-    //  Prepare our context and sockets
-    zmq::context_t *context = (zmq::context_t *)arg;
-    zmq::socket_t socket(*context, ZMQ_REP);
-    socket.bind("tcp://127.0.0.1:" + std::to_string(port));
 
-    qDebug() << "Gym::worker connected?[" << socket.connected() << "] port[" << port << "]";
+// void *worker_routine(void *arg)
+// {
+//     int port = portIter;
+//     //  Prepare our context and sockets
+//     zmq::context_t *context = (zmq::context_t *)arg;
+//     zmq::socket_t socket(*context, ZMQ_REP);
+//     socket.bind("tcp://127.0.0.1:" + std::to_string(port));
 
-    portIter++;
+//     qDebug() << "Gym::worker connected?[" << socket.connected() << "] port[" << port << "]";
 
-    while (true) {
-        //  Wait for next request from client
-        zmq::message_t request;
-        socket.recv(&request);
+//     portIter++;
 
-        // qDebug() << "Gym::zmq-worker::Received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
-        // qDebug() << "Gym::zmq-worker::Received request[" << request.size() << "]";
+//     while (true) {
+//         //  Wait for next request from client
+//         zmq::message_t request;
+//         socket.recv(&request);
 
-        float action1, action2, action3;
+//         // qDebug() << "Gym::zmq-worker::Received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
+//         // qDebug() << "Gym::zmq-worker::Received request[" << request.size() << "]";
 
-        std::istringstream iss(static_cast<char*>(request.data()));
-        iss >> action1 >> action2 >> action3;
+//         float action1, action2, action3;
 
-        qDebug() << "Gym::zmq-worker::Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+//         std::istringstream iss(static_cast<char*>(request.data()));
+//         iss >> action1 >> action2 >> action3;
 
-        // if (gymagents.empty()) {
-        //     qDebug() << "Gym::zmq-worker::No actors available";
-        //     continue;
-        // }
-        // if(gymagents.find(uuid) != gymagents.end())
+//         qDebug() << "Gym::zmq-worker::Received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
 
-        instance->gymMessage(port, action1);        // notify the javascript
-        // qDebug() << "Gym::zmq-worker::test return [" << test << "]";
+//         // if (gymagents.empty()) {
+//         //     qDebug() << "Gym::zmq-worker::No actors available";
+//         //     continue;
+//         // }
+//         // if(gymagents.find(uuid) != gymagents.end())
 
-        // instance->gymAgentChange(); //only on first connection
+//         instance->gymMessage(port, action1);        // notify the javascript
+//         // qDebug() << "Gym::zmq-worker::test return [" << test << "]";
 
-        //  Do some 'work'
-        sleep(1);
+//         // instance->gymAgentChange(); //only on first connection
 
-        //  Send reply back to client
-        // zmq::message_t reply(5);
-        // memcpy(reply.data(), "World", 5);
-        zmq::message_t reply(request.size());
-        memcpy(reply.data(), request.data(), request.size());
-        socket.send(reply);
-    }
-    return (NULL);
+//         //  Do some 'work'
+//         sleep(1);
+
+//         //  Send reply back to client
+//         // zmq::message_t reply(5);
+//         // memcpy(reply.data(), "World", 5);
+//         zmq::message_t reply(request.size());
+//         memcpy(reply.data(), request.data(), request.size());
+//         socket.send(reply);
+//     }
+//     return (NULL);
+// }
+
+void Worker::doWork(const QString &parameter) {
+    qDebug() << "Gym::Worker::doWork: " << parameter;
+    QString result;
+    /* ... here is the expensive or blocking operation ... */
+    result = "from Gym::Worker::doWork testing...";
+    emit resultReady(result);
 }
+
+void Gym::handleResults(const QString &result) {
+    qDebug() << "Gym::handleResults: " << result;
+}
+
 
 // Global ZeroMQ context
 static zmq::context_t context(1);
+QThread workerThread;
 
 void Gym::GymSetup() {
     qDebug() << "Gym::GymSetup";
@@ -122,17 +138,30 @@ void Gym::GymSetup() {
     // qDebug() << "Current 0MQ version is " << major << "." << minor << "." << patch;
 
     //  Launch pool of ZeroMQ worker threads
-    for (int thread_nbr = 0; thread_nbr < 1; thread_nbr++) {
-        pthread_t worker;
-        pthread_create(&worker, NULL, worker_routine, (void *)&context);
-    }
+    // for (int thread_nbr = 0; thread_nbr < 1; thread_nbr++) {
+    //     pthread_t worker;
+    //     pthread_create(&worker, NULL, worker_routine, (void *)&context);
+    // }
+
+    Worker *worker = new Worker;
+    worker->moveToThread(&workerThread);
+    connect(&workerThread, &QThread::finished, worker, &QObject::deleteLater);
+    connect(instance, &Gym::operate, worker, &Worker::doWork);
+    connect(worker, &Worker::resultReady, instance, &Gym::handleResults);
+    workerThread.start();
+
+    emit operate("blaAAA");
     qDebug() << "Gym::zmq worker threads created";
 }
 void Gym::GymCleanup() {
     qDebug() << "Gym::GymCleanup";
     
+    workerThread.quit();
+    workerThread.wait();
+
     gymagents.clear();
 }
+
 
 Gym::Gym() {
     instance = this;

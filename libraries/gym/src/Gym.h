@@ -23,7 +23,7 @@
  * @namespace Gym
  *
  * @hifi-interface
- * @hifi-client-entity
+ * @hifi-server-entity
  */
 
 class Gym : public QObject, public Dependency {
@@ -40,10 +40,12 @@ private:
     void GymCleanup();
 
 signals:
+    void operate(const QString &parameter);
     void onGymAgentChange(int agent); // notify new agent connected
     void onGymMessage(QVariantMap message); // relay new message from agent
 
 public slots:
+    void handleResults(const QString &result);
 
     /**jsdoc
      * Get a list of available agents.
@@ -71,6 +73,18 @@ public slots:
 public:
     Gym();
     virtual ~Gym();
+};
+
+
+class Worker : public QObject
+{
+    Q_OBJECT
+
+public slots:
+    void doWork(const QString &parameter);
+
+signals:
+    void resultReady(const QString &result);
 };
 
 #endif // hifi_Gym_h
