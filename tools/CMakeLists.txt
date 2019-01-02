@@ -31,6 +31,7 @@ if (BUILD_TOOLS)
         oven
         auto-tester
         nitpick
+        webview
     )
 
     foreach(TOOL ${ALL_TOOLS})

@@ -56,17 +56,18 @@ void Context::debugMessageHandler(const QOpenGLDebugMessage& debugMessage) {
     switch (severity) {
         case QOpenGLDebugMessage::NotificationSeverity:
         case QOpenGLDebugMessage::LowSeverity:
+            qCDebug(glLogging) << debugMessage;
             return;
+
         default:
+            qCWarning(glLogging) << debugMessage;
             break;
     }
-    qDebug(glLogging) << debugMessage;
-    return;
 }
 
 void Context::setupDebugLogging(QOpenGLContext *context) {
     QOpenGLDebugLogger *logger = new QOpenGLDebugLogger(context);
-    QObject::connect(logger, &QOpenGLDebugLogger::messageLogged, nullptr, [](const QOpenGLDebugMessage& message){
+    QObject::connect(logger, &QOpenGLDebugLogger::messageLogged, context, [](const QOpenGLDebugMessage& message){
         Context::debugMessageHandler(message);
     });
     if (logger->initialize()) {
