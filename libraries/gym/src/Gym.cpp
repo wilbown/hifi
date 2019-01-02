@@ -9,8 +9,6 @@
 //
 
 #include "Gym.h"
-#include <QtCore/QUuid>
-#include <QtCore/QThread>
 #include <QtCore/QLoggingCategory>
 
 #include <sstream>
@@ -18,9 +16,6 @@
 
 static Gym* instance = NULL;        // communicate this to non-class callbacks
 static bool broadcastEnabled = false;
-
-// Stores the agents that have connected
-QList<int> gymagents;
 
 void Gym::gymAgentChange(int agent) {
     emit onGymAgentChange(agent);
@@ -33,7 +28,7 @@ void Gym::sendMessage(int agent, QVariantMap message) {
         QVariantMap eventData;
         eventData["agent"] = agent;
         eventData["message"] = message;
-        emit onMessage(eventData);
+        gymThreadWorkers[agent]->handleMessage(eventData);
     }
 }
 
@@ -44,17 +39,19 @@ void Gym::gymMessage(int agent, QVariantMap message) {
     emit onGymMessage(eventData);
 }
 
-void GymWorker::doAgentListen(zmq::context_t *context) {
-    qDebug() << "GymWorker::doAgentListen";
 
-    zmq::socket_t socket(*context, ZMQ_REP);
+
+// GymThread Class
+void GymThread::run() {
+    qDebug() << "GymThread::run";
+
+    zmq::socket_t socket(*zmq_context, ZMQ_REP);
     socket.bind("tcp://127.0.0.1:" + std::to_string(port));
+    qDebug() << "GymThread::run socket.connected?[" << socket.connected() << "] port[" << port << "]";
 
-    qDebug() << "GymWorker::doAgentListen socket.connected?[" << socket.connected() << "] port[" << port << "]";
+    while (!quit) {
+        qDebug() << "GymThread::run LOOP";
 
-
-    // while (!quit) {
-        qDebug() << "GymWorker::doAgentListen LOOP";
         //  Wait for next request from client
         zmq::message_t request;
         socket.recv(&request);
@@ -63,95 +60,107 @@ void GymWorker::doAgentListen(zmq::context_t *context) {
         // qDebug() << "GymWorker::doAgentListen received request[" << request.size() << "]";
 
         float action1, action2, action3;
-
         std::istringstream iss(static_cast<char*>(request.data()));
         iss >> action1 >> action2 >> action3;
+        qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
 
-        qDebug() << "GymWorker::doAgentListen received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+
+        // if (!socket.waitForConnected(Timeout)) {
+        //     emit error(socket.error(), socket.errorString());
+        //     return;
+        // }
+
 
         // TODO keep track when agent sends first message
-        // if (gymagents.empty()) {
+        // if (gymThreadWorkers.empty()) {
         //     qDebug() << "Gym::zmq-worker::No actors available";
         //     continue;
         // }
-        // if(gymagents.find(uuid) != gymagents.end())
-        // gymagents.push_back(port);
         // instance->gymAgentChange(port); //only on first message
+
 
         QVariantList action;
         action << action1 << action2 << action3;
         QVariantMap message;
         message["action"] = action;
-
         instance->gymMessage(port, message);        // notify the javascript
 
-        QThread::sleep(1);
-        // cond.wait(&mutex);
-
         mutex.lock();
-        // TODO Grab state to send back to client
-        qDebug() << "GymWorker::doAgentListen read state [" << state["testdata"] << "]";
-        mutex.unlock();
+        qDebug() << "GymThread::run emit action";
 
-        //  Send reply back to client
+        // QThread::sleep(1);
+        cond.wait(&mutex);
+        qDebug() << "GymThread::run done waiting";
+
+        // TODO Grab state to send back to client
+        qDebug() << "GymThread::run read state [" << state["testdata"] << "]";
+
+        // Send reply back to client
         // zmq::message_t reply(5);
         // memcpy(reply.data(), "World", 5);
         zmq::message_t reply(request.size());
         memcpy(reply.data(), request.data(), request.size());
         socket.send(reply);
-    // }
+        
+        mutex.unlock();
+    }
 }
-void GymWorker::handleMessage(QVariantMap eventData) {
-    qDebug() << "GymWorker::handleMessage: " << eventData;
-    mutex.lock();
+void GymThread::handleMessage(QVariantMap eventData) {
+    qDebug() << "GymThread::handleMessage: " << eventData;
+    QMutexLocker locker(&mutex);
+    // TODO loop through message and add any new keys to state, replace keys if they already exist in state
     state["testdata"] = eventData["agent"];
-    // cond.wakeOne();
-    mutex.unlock();
+    cond.wakeOne();
 }
-// GymWorker::~GymWorker() {
-//     mutex.lock();
-//     quit = true;
-//     cond.wakeOne();
-//     mutex.unlock();
-// }
+// GymThread::GymThread(QObject *parent) : QThread(parent), quit(false) {}
+GymThread::GymThread(QObject *parent, zmq::context_t *_zmq_context, int _port) : QThread(parent) {
+    // mutex.lock();
+    quit = false;
+    port = _port;
+    zmq_context = _zmq_context;
+    // mutex.unlock();
+}
+GymThread::~GymThread() {
+    mutex.lock();
+    quit = true;
+    cond.wakeOne();
+    mutex.unlock();
+    wait();
+}
 
 
 // Global ZeroMQ context
 static zmq::context_t context(1);
-QThread gymWorkerThread;
 
 void Gym::GymSetup() {
     qDebug() << "Gym::GymSetup";
-
-    gymagents.clear();
+    gymThreadWorkers.clear();
 
     // Check ZeroMQ version
     // int major, minor, patch;
     // zmq_version (&major, &minor, &patch);
     // qDebug() << "Current 0MQ version is " << major << "." << minor << "." << patch;
 
+    
     // TODO Launch pool of ZeroMQ worker threads
-    // int port = portIter;
-    // portIter++;
+    for (int p = 5558; p < 5559; p++) {
+        gymThreadWorkers[p] = new GymThread(this, &context, p);
 
-    GymWorker *worker = new GymWorker;
-    worker->port = 5558;
-    worker->moveToThread(&gymWorkerThread);
-    connect(&gymWorkerThread, &QThread::finished, worker, &QObject::deleteLater);
-    connect(instance, &Gym::startAgentListener, worker, &GymWorker::doAgentListen);
-    connect(instance, &Gym::onMessage, worker, &GymWorker::handleMessage);
-    gymWorkerThread.start();
-    emit startAgentListener(&context);
+        // connect(&gymThread, SIGNAL(newFortune(QString)), instance, SLOT(showFortune(QString)));
+        // connect(&gymThread, SIGNAL(error(int,QString)), instance, SLOT(displayError(int,QString)));
+
+        // GymThread *gymThreadWorker = new GymThread(this);
+        // connect(gymThreadWorker, &GymThread::resultReady, this, &Gym::handleResults);
+
+        connect(gymThreadWorkers[p], &GymThread::finished, gymThreadWorkers[p], &QObject::deleteLater);
+        gymThreadWorkers[p]->start();
+    }
 
     qDebug() << "Gym::GymWorker threads created";
 }
 void Gym::GymCleanup() {
     qDebug() << "Gym::GymCleanup";
-    
-    gymWorkerThread.quit();
-    gymWorkerThread.wait();
-
-    gymagents.clear();
+    gymThreadWorkers.clear();
 }
 
 
@@ -167,7 +176,7 @@ Gym::~Gym() {
 // Public scripting (Q_INVOKABLE)
 
 QList<int> Gym::listGymAgents() {
-    return gymagents;
+    return gymThreadWorkers.keys();
 }
 
 void Gym::sendGymMessage(int agent, QVariantMap message) {

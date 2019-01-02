@@ -141,7 +141,7 @@ class error_t : public std::exception
   public:
     error_t() : errnum(zmq_errno()) {}
 #ifdef ZMQ_CPP11
-    virtual const char *what() const noexcept { return zmq_strerror(errnum); }
+    virtual const char* what() const noexcept override { return zmq_strerror(errnum); }
 #else
     virtual const char *what() const throw() { return zmq_strerror(errnum); }
 #endif

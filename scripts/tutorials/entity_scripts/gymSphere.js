@@ -48,8 +48,8 @@
             Gym.sendGymMessage(_this.agent, message);
         },
         handleGymMessage: function(_message) {
-            print("GymSphere.handleGymMessage entityID:" + _this.entityID);
-            // print("GymSphere.handleGymMessage: "+JSON.stringify(_message));
+            // print("GymSphere.handleGymMessage entityID:" + _this.entityID);
+            print("GymSphere.handleGymMessage: "+JSON.stringify(_message));
 
             if (_message.agent != _this.agent) return; //ignore other agents
             action = _message.message.action;

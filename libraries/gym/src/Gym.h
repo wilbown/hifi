@@ -16,12 +16,41 @@
 #include <DependencyManager.h>
 
 // #include <QtCore/QUuid>
+#include <QtCore/QThread>
 #include <QtCore/QMutex>
 #include <QtCore/QWaitCondition>
 
 #include <zmq.hpp>
 #include <vector>
 #include <string>
+
+// #include "GymThread.h"
+class GymThread : public QThread
+{
+    Q_OBJECT
+
+private:
+    QMutex mutex;
+    QWaitCondition cond;
+    bool quit;
+
+    zmq::context_t *zmq_context;
+    int port;
+
+    QVariantMap state; // The current environment state for the agent
+
+public:
+    void handleMessage(QVariantMap eventData); // Send message to an agent (execute with emit onMessage)
+    void run() override;
+
+signals:
+    // void newFortune(const QString &fortune);
+    // void error(int socketError, const QString &message);
+
+public:
+    GymThread(QObject *parent, zmq::context_t *_zmq_context, int _port);
+    virtual ~GymThread();
+};
 
 /**jsdoc
  * @namespace Gym
@@ -33,6 +62,9 @@
 class Gym : public QObject, public Dependency {
     Q_OBJECT
     SINGLETON_DEPENDENCY
+
+private:
+    QMap<int, GymThread *> gymThreadWorkers;
 
 private:
     void GymSetup();
@@ -84,27 +116,5 @@ public:
     virtual ~Gym();
 };
 
-
-class GymWorker : public QObject
-{
-    Q_OBJECT
-
-public slots:
-    void doAgentListen(zmq::context_t *context); // Run the listening loop waiting for agent messages (execute with emit startAgentListener)
-    void handleMessage(QVariantMap eventData); // Send message to an agent (execute with emit onMessage)
-
-signals:
-
-public:
-    int port;
-private:
-    bool quit = false;
-    QMutex mutex;
-    // QWaitCondition cond;
-    QVariantMap state; // The current environment state for the agent
-
-public:
-    // virtual ~GymWorker();
-};
 
 #endif // hifi_Gym_h
