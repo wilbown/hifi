@@ -58,6 +58,7 @@
             Entities.editEntity(_this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
 
             // Return my current environment
+            _this.environment.observation = [action[1], Math.random(), action[2], -1.0];
             _this.environment.reward = action[0];
             Gym.sendGymMessage(_this.agent, _this.environment);
         },
@@ -86,8 +87,9 @@
         unload: function(_entityID) {
             print("GymSphere.unload entityID:" + _entityID);
 
-            // _this.environment.done = true;
-            // Gym.sendGymMessage(_this.agent, _this.environment);
+            // Tell agent that we are dying
+            _this.environment.done = true;
+            Gym.sendGymMessage(_this.agent, _this.environment);
 
             // Script.update.disconnect(_this.update);
             Gym.onGymMessage.disconnect(_this.handleGymMessage);

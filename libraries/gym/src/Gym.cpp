@@ -25,10 +25,7 @@ void Gym::sendMessage(int agent, QVariantMap message) {
     if (broadcastEnabled) {
     } else {
         qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << message["observation"] << "] reward[" << message["reward"] << "] done[" << message["done"] << "] info[" << message["info"] << "]";
-        QVariantMap eventData;
-        eventData["agent"] = agent;
-        eventData["message"] = message;
-        gymThreadWorkers[agent]->handleMessage(eventData);
+        gymThreadWorkers[agent]->handleMessage(message);
     }
 }
 
@@ -50,11 +47,16 @@ void GymThread::run() {
     qDebug() << "GymThread::run socket.connected?[" << socket.connected() << "] port[" << port << "]";
 
     while (!quit) {
-        qDebug() << "GymThread::run LOOP";
+        // qDebug() << "GymThread::run LOOP";
 
         //  Wait for next request from client
         zmq::message_t request;
         socket.recv(&request);
+        // if (!socket.waitForConnected(Timeout)) {
+        //     emit error(socket.error(), socket.errorString());
+        //     return;
+        // }
+
 
         // qDebug() << "GymWorker::doAgentListen received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
         // qDebug() << "GymWorker::doAgentListen received request[" << request.size() << "]";
@@ -63,12 +65,6 @@ void GymThread::run() {
         std::istringstream iss(static_cast<char*>(request.data()));
         iss >> action1 >> action2 >> action3;
         qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
-
-
-        // if (!socket.waitForConnected(Timeout)) {
-        //     emit error(socket.error(), socket.errorString());
-        //     return;
-        // }
 
 
         // TODO keep track when agent sends first message
@@ -86,30 +82,50 @@ void GymThread::run() {
         instance->gymMessage(port, message);        // notify the javascript
 
         mutex.lock();
-        qDebug() << "GymThread::run emit action";
+        // qDebug() << "GymThread::run emit action";
 
-        // QThread::sleep(1);
         cond.wait(&mutex);
-        qDebug() << "GymThread::run done waiting";
 
         // TODO Grab state to send back to client
-        qDebug() << "GymThread::run read state [" << state["testdata"] << "]";
+        QList<QVariant> observation = state["observation"].toList();
+        QString test = observation[0].toString() + " " + observation[1].toString() + " " + observation[2].toString() + " " + observation[3].toString() + " " + state["reward"].toString();
+        if (state["done"].toBool()) test = test + " 1";
+        else test = test + " 0";
+        qDebug() << "GymThread::run sending reply [" << test << "]";
+
+        QByteArray ba = test.toLocal8Bit();
+        // ba.length
+        const char *c_str2 = ba.data();
+
+        QThread::sleep(1);
+
+        // std::ostringstream oss;
+        // oss << action1 << " " << action2 << " " << action3 << " " << action3 << " " << action3 << " 0";
+        // std::string reply_str(oss.str());
+        // qDebug() << "GymThread::run sending reply [" << QString::fromStdString(reply_str) << "]";
 
         // Send reply back to client
         // zmq::message_t reply(5);
         // memcpy(reply.data(), "World", 5);
-        zmq::message_t reply(request.size());
-        memcpy(reply.data(), request.data(), request.size());
+        // zmq::message_t reply(request.size());
+        // memcpy(reply.data(), request.data(), request.size());
+        // zmq::message_t reply(reply_str.length());
+        // memcpy(reply.data(), reply_str.c_str(), reply_str.length());
+        zmq::message_t reply(strlen(c_str2));
+        memcpy(reply.data(), c_str2, strlen(c_str2));
         socket.send(reply);
         
         mutex.unlock();
     }
 }
-void GymThread::handleMessage(QVariantMap eventData) {
-    qDebug() << "GymThread::handleMessage: " << eventData;
+void GymThread::handleMessage(QVariantMap message) {
+    qDebug() << "GymThread::handleMessage: " << message;
     QMutexLocker locker(&mutex);
-    // TODO loop through message and add any new keys to state, replace keys if they already exist in state
-    state["testdata"] = eventData["agent"];
+    // Loop through message and add any new keys to state, replace keys if they already exist in state
+    QMapIterator<QString, QVariant> i(message);
+    while (i.hasNext()) {
+        i.next(); state[i.key()] = i.value();
+    }
     cond.wakeOne();
 }
 // GymThread::GymThread(QObject *parent) : QThread(parent), quit(false) {}

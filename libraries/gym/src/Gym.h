@@ -40,7 +40,7 @@ private:
     QVariantMap state; // The current environment state for the agent
 
 public:
-    void handleMessage(QVariantMap eventData); // Send message to an agent (execute with emit onMessage)
+    void handleMessage(QVariantMap message); // Send message to an agent (execute with emit onMessage)
     void run() override;
 
 signals:
