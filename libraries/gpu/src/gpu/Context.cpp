@@ -354,10 +354,12 @@ void Context::pushProgramsToSync(const std::vector<uint32_t>& programIDs, std::f
     }
     pushProgramsToSync(programs, callback, rate);
 }
+
 void Context::pushProgramsToSync(const std::vector<gpu::ShaderPointer>& programs, std::function<void()> callback, size_t rate) {
     Lock lock(_programsToSyncMutex);
     _programsToSyncQueue.emplace(programs, callback, rate == 0 ? programs.size() : rate);
 }
+
 void Context::processProgramsToSync() {
     if (!_programsToSyncQueue.empty()) {
         Lock lock(_programsToSyncMutex);
@@ -370,6 +372,7 @@ void Context::processProgramsToSync() {
             _nextProgramToSyncIndex++;
             numSynced++;
         }
+
         if (_nextProgramToSyncIndex == programsToSync.programs.size()) {
             programsToSync.callback();
             _nextProgramToSyncIndex = 0;

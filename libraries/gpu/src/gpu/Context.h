@@ -251,14 +251,16 @@ public:
 
     struct ProgramsToSync {
         ProgramsToSync(const std::vector<gpu::ShaderPointer>& programs, std::function<void()> callback, size_t rate) :
-            programs(programs), callback(callback), rate(rate) {
-        }
+            programs(programs), callback(callback), rate(rate) {}
+
         std::vector<gpu::ShaderPointer> programs;
         std::function<void()> callback;
         size_t rate;
     };
+
     void pushProgramsToSync(const std::vector<uint32_t>& programIDs, std::function<void()> callback, size_t rate = 0);
     void pushProgramsToSync(const std::vector<gpu::ShaderPointer>& programs, std::function<void()> callback, size_t rate = 0);
+
     void processProgramsToSync();
 
 protected:

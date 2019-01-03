@@ -219,17 +219,12 @@
         });
     }
 
-    function buyButtonClicked(id, name, author, price, href, referrer, edition, type) {
+    function buyButtonClicked(id, referrer, edition) {
         EventBridge.emitWebEvent(JSON.stringify({
             type: "CHECKOUT",
             itemId: id,
-            itemName: name,
-            itemPrice: price ? parseInt(price, 10) : 0,
-            itemHref: href,
             referrer: referrer,
-            itemAuthor: author,
-            itemEdition: edition,
-            itemType: type.trim()
+            itemEdition: edition
         }));
     }
 
@@ -256,19 +251,39 @@
             $(this).closest('.col-xs-3').attr("class", 'col-xs-6');
 
             var priceElement = $(this).find('.price');
-            priceElement.css({
-                "padding": "3px 5px",
-                "height": "40px",
-                "background": "linear-gradient(#00b4ef, #0093C5)",
-                "color": "#FFF",
-                "font-weight": "600",
-                "line-height": "34px"
-            });
+            var available = true;
+
+            if (priceElement.text() === 'invalidated' ||
+                priceElement.text() === 'sold out' ||
+                priceElement.text() === 'not for sale') {
+                available = false;
+                priceElement.css({
+                    "padding": "3px 5px 10px 5px",
+                    "height": "40px",
+                    "background": "linear-gradient(#a2a2a2, #fefefe)",
+                    "color": "#000",
+                    "font-weight": "600",
+                    "line-height": "34px"
+                });
+            } else {
+                priceElement.css({
+                    "padding": "3px 5px",
+                    "height": "40px",
+                    "background": "linear-gradient(#00b4ef, #0093C5)",
+                    "color": "#FFF",
+                    "font-weight": "600",
+                    "line-height": "34px"
+                });
+            }
 
             if (parseInt(cost) > 0) {
                 priceElement.css({ "width": "auto" });
-                priceElement.html('<span class="hifi-glyph hifi-glyph-hfc" style="filter:invert(1);background-size:20px;' +
-                    'width:20px;height:20px;position:relative;top:5px;"></span> ' + cost);
+
+                if (available) {
+                    priceElement.html('<span class="hifi-glyph hifi-glyph-hfc" style="filter:invert(1);background-size:20px;' +
+                        'width:20px;height:20px;position:relative;top:5px;"></span> ' + cost);
+                }
+                
                 priceElement.css({ "min-width": priceElement.width() + 30 });
             }
         });
@@ -313,13 +328,8 @@
                 return false;
             }
             buyButtonClicked($(this).closest('.grid-item').attr('data-item-id'),
-                $(this).closest('.grid-item').find('.item-title').text(),
-                $(this).closest('.grid-item').find('.creator').find('.value').text(),
-                $(this).closest('.grid-item').find('.item-cost').text(),
-                $(this).attr('data-href'),
                 "mainPage",
-                -1,
-                $(this).closest('.grid-item').find('.item-type').text());
+                -1);
         });
     }
 
@@ -427,13 +437,8 @@
                 purchaseButton.on('click', function () {
                     if ('available' === availability || isUpdating) {
                         buyButtonClicked(window.location.pathname.split("/")[3],
-                            $('#top-center').find('h1').text(),
-                            $('#creator').find('.value').text(),
-                            cost,
-                            href,
                             "itemPage",
-                            urlParams.get('edition'),
-                            type);
+                            urlParams.get('edition'));
                     }
                 });
             }

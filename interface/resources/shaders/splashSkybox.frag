@@ -28,5 +28,5 @@ vec3 getSkyboxColor() {
     horizonColor = mix(horizonColor, SPACE_BLUE, smoothstep(0.0, 0.08, _normal.y));
     horizonColor = mix(horizonColor, BLACK, smoothstep(0.04, 0.15, _normal.y));
     horizonColor = mix(BLACK, horizonColor, smoothstep(-0.01, 0.0, _normal.y));
-    return pow(horizonColor, vec3(0.4545));;
+	return pow(horizonColor, vec3(0.4545));;
 }

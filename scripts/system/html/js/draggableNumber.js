@@ -7,6 +7,7 @@
 //  See the accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0.html
 
 const DELTA_X_FOCUS_THRESHOLD = 1;
+const ENTER_KEY = 13;
 
 function DraggableNumber(min, max, step, decimals, dragStart, dragEnd) {
     this.min = min;
@@ -146,7 +147,7 @@ DraggableNumber.prototype = {
     },
 
     keyPress: function(event) {
-        if (event.keyCode === 13) {
+        if (event.keyCode === ENTER_KEY) {
             this.inputBlur();
         }
     },
@@ -169,8 +170,8 @@ DraggableNumber.prototype = {
         this.elDiv = document.createElement('div');
         this.elDiv.className = "draggable-number";
         
-        this.elText = document.createElement('label');
-        this.elText.className = "draggable-number text";
+        this.elText = document.createElement('span');
+        this.elText.className = "text";
         this.elText.innerText = " ";
         this.elText.style.visibility = "visible";
         this.elText.addEventListener("mousedown", this.onMouseDown);
@@ -178,15 +179,15 @@ DraggableNumber.prototype = {
         
         this.elLeftArrow = document.createElement('span');
         this.elRightArrow = document.createElement('span');
-        this.elLeftArrow.className = 'draggable-number left-arrow';
+        this.elLeftArrow.className = 'left-arrow';
         this.elLeftArrow.innerHTML = 'D';
         this.elLeftArrow.addEventListener("click", this.onStepDown);
-        this.elRightArrow.className = 'draggable-number right-arrow';
+        this.elRightArrow.className = 'right-arrow';
         this.elRightArrow.innerHTML = 'D';
         this.elRightArrow.addEventListener("click", this.onStepUp);
         
         this.elInput = document.createElement('input');
-        this.elInput.className = "draggable-number input";
+        this.elInput.className = "input";
         this.elInput.setAttribute("type", "number");
         if (this.min !== undefined) {
             this.elInput.setAttribute("min", this.min);
@@ -204,8 +205,8 @@ DraggableNumber.prototype = {
         this.elInput.addEventListener("focus", this.showInput.bind(this));
         
         this.elDiv.appendChild(this.elLeftArrow);
+        this.elDiv.appendChild(this.elText);
         this.elDiv.appendChild(this.elInput);
         this.elDiv.appendChild(this.elRightArrow);
-        this.elDiv.appendChild(this.elText);
     }
 };

@@ -139,7 +139,7 @@ MyAvatar::MyAvatar(QThread* thread) :
     _flyingHMDSetting(QStringList() << AVATAR_SETTINGS_GROUP_NAME << "flyingHMD", _flyingPrefHMD),
     _avatarEntityCountSetting(QStringList() << AVATAR_SETTINGS_GROUP_NAME << "avatarEntityData" << "size", 0)
 {
-    _clientTraitsHandler = std::unique_ptr<ClientTraitsHandler>(new ClientTraitsHandler(this));
+    _clientTraitsHandler.reset(new ClientTraitsHandler(this));
 
     // give the pointer to our head to inherited _headData variable from AvatarData
     _headData = new MyHead(this);
@@ -887,8 +887,7 @@ void MyAvatar::simulate(float deltaTime) {
                         moveOperator.addEntityToMoveList(entity, newCube);
                     }
                     // send an edit packet to update the entity-server about the queryAABox
-                    // unless it is client-only
-                    if (packetSender && !entity->getClientOnly()) {
+                    if (packetSender && entity->isDomainEntity()) {
                         EntityItemProperties properties = entity->getProperties();
                         properties.setQueryAACubeDirty();
                         properties.setLastEdited(now);
@@ -899,7 +898,7 @@ void MyAvatar::simulate(float deltaTime) {
 
                         entity->forEachDescendant([&](SpatiallyNestablePointer descendant) {
                             EntityItemPointer entityDescendant = std::dynamic_pointer_cast<EntityItem>(descendant);
-                            if (entityDescendant && !entityDescendant->getClientOnly() && descendant->updateQueryAACube()) {
+                            if (entityDescendant && entityDescendant->isDomainEntity() && descendant->updateQueryAACube()) {
                                 EntityItemProperties descendantProperties;
                                 descendantProperties.setQueryAACube(descendant->getQueryAACube());
                                 descendantProperties.setLastEdited(now);
@@ -1480,6 +1479,7 @@ void MyAvatar::loadData() {
     setSnapTurn(_useSnapTurnSetting.get());
     setDominantHand(_dominantHandSetting.get(DOMINANT_RIGHT_HAND).toLower());
     setUserHeight(_userHeightSetting.get(DEFAULT_AVATAR_HEIGHT));
+    setTargetScale(_scaleSetting.get());
 
     setEnableMeshVisible(Menu::getInstance()->isOptionChecked(MenuOption::MeshVisible));
     _follow.setToggleHipsFollowing (Menu::getInstance()->isOptionChecked(MenuOption::ToggleHipsFollowing));
@@ -2418,10 +2418,10 @@ void MyAvatar::attachmentDataToEntityProperties(const AttachmentData& data, Enti
 void MyAvatar::initHeadBones() {
     int neckJointIndex = -1;
     if (_skeletonModel->isLoaded()) {
-        neckJointIndex = _skeletonModel->getHFMModel().neckJointIndex;
+        neckJointIndex = getJointIndex("Neck");
     }
     if (neckJointIndex == -1) {
-        neckJointIndex = (_skeletonModel->getHFMModel().headJointIndex - 1);
+        neckJointIndex = (getJointIndex("Head") - 1);
         if (neckJointIndex < 0) {
             // return if the head is not even there. can't cauterize!!
             return;
