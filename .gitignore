@@ -71,7 +71,6 @@ gvr-interface/libs/*
 TAGS
 *.sw[po]
 *.jsc
-__pycache__
 
 # ignore QML compilation output
 *.qmlc

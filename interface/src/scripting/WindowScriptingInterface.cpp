@@ -18,7 +18,6 @@
 #include <QtGui/QDesktopServices>
 #include <shared/QtHelpers.h>
 #include <SettingHandle.h>
-#include <shared/GlobalAppProperties.h>
 
 #include <display-plugins/CompositorHelper.h>
 #include <AddressManager.h>
@@ -606,8 +605,4 @@ void WindowScriptingInterface::onMessageBoxSelected(int button) {
 
 float WindowScriptingInterface::domainLoadingProgress() {
     return qApp->getOctreePacketProcessor().domainLoadingProgress();
-}
-
-bool WindowScriptingInterface::getIsInOculusStoreMode() {
-    return qApp->property(hifi::properties::OCULUS_STORE).toBool();
 }

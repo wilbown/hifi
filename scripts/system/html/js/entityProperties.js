@@ -1209,7 +1209,7 @@ const GROUPS = [
             },
             {
                 label: "Lifetime",
-                type: "string",
+                type: "number",
                 unit: "s",
                 propertyID: "lifetime",
             },

@@ -12,7 +12,6 @@
 #include "Audio.h"
 
 #include <shared/QtHelpers.h>
-#include <shared/GlobalAppProperties.h>
 
 #include "Application.h"
 #include "AudioClient.h"
@@ -207,8 +206,4 @@ void Audio::setOutputDevice(const QAudioDeviceInfo& device, bool isHMD) {
     withWriteLock([&] {
         _devices.chooseOutputDevice(device, isHMD);
     });
-}
-
-bool Audio::getIsInOculusStoreMode() {
-    return qApp->property(hifi::properties::OCULUS_STORE).toBool();
 }
