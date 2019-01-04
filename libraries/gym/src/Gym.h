@@ -2,7 +2,7 @@
 //  Gym.h
 //  libraries/gym/src
 //
-//  Created by Wil Bown
+//  Created by Wil Bown on 12/21/2018
 //
 //  Distributed under the Apache License, Version 2.0.
 //  See the accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0.html

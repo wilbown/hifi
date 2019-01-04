@@ -2,7 +2,7 @@
 //  Gym.cpp
 //  libraries/gym/src
 //
-//  Created by Wil Bown
+//  Created by Wil Bown on 12/21/2018
 //
 //  Distributed under the Apache License, Version 2.0.
 //  See the accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0.html
@@ -24,7 +24,7 @@ void Gym::gymAgentChange(int agent) {
 void Gym::sendMessage(int agent, QVariantMap message) {
     if (broadcastEnabled) {
     } else {
-        qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << message["observation"] << "] reward[" << message["reward"] << "] done[" << message["done"] << "] info[" << message["info"] << "]";
+        // qDebug() << "Gym::sendMessage agent[" << agent << "] observation[" << message["observation"] << "] reward[" << message["reward"] << "] done[" << message["done"] << "] info[" << message["info"] << "]";
         gymThreadWorkers[agent]->handleMessage(message);
     }
 }
@@ -64,7 +64,7 @@ void GymThread::run() {
         float action1, action2, action3;
         std::istringstream iss(static_cast<char*>(request.data()));
         iss >> action1 >> action2 >> action3;
-        qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+        // qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
 
 
         // TODO keep track when agent sends first message
@@ -91,13 +91,13 @@ void GymThread::run() {
         QString test = observation[0].toString() + " " + observation[1].toString() + " " + observation[2].toString() + " " + observation[3].toString() + " " + state["reward"].toString();
         if (state["done"].toBool()) test = test + " 1";
         else test = test + " 0";
-        qDebug() << "GymThread::run sending reply [" << test << "]";
+        // qDebug() << "GymThread::run sending reply [" << test << "]";
 
         QByteArray ba = test.toLocal8Bit();
         // ba.length
         const char *c_str2 = ba.data();
 
-        QThread::sleep(1);
+        QThread::sleep(0.01);
 
         // std::ostringstream oss;
         // oss << action1 << " " << action2 << " " << action3 << " " << action3 << " " << action3 << " 0";
@@ -119,7 +119,7 @@ void GymThread::run() {
     }
 }
 void GymThread::handleMessage(QVariantMap message) {
-    qDebug() << "GymThread::handleMessage: " << message;
+    // qDebug() << "GymThread::handleMessage: " << message;
     QMutexLocker locker(&mutex);
     // Loop through message and add any new keys to state, replace keys if they already exist in state
     QMapIterator<QString, QVariant> i(message);
