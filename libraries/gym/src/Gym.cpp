@@ -57,14 +57,24 @@ void GymThread::run() {
         //     return;
         // }
 
+        mutex.lock();
 
-        // qDebug() << "GymWorker::doAgentListen received request[" << std::string(static_cast<char*>(request.data()), request.size()) << "]";
-        // qDebug() << "GymWorker::doAgentListen received request[" << request.size() << "]";
 
-        float action1, action2, action3;
-        std::istringstream iss(static_cast<char*>(request.data()));
-        iss >> action1 >> action2 >> action3;
-        // qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+        // qDebug() << "GymThread::run received request[" << QString::fromStdString(std::string(static_cast<char*>(request.data()), request.size())) << "]";
+        // qDebug() << "GymThread::run received request[" << request.size() << "]";
+        QString qstr = QString::fromUtf8(static_cast<char*>(request.data()), request.size());
+        // qDebug() << "GymThread::run received request[" << qstr << "]";
+
+        // float action1, action2, action3;
+        // std::istringstream iss(static_cast<char*>(request.data()));
+        // iss >> action1 >> action2 >> action3;
+        // // qDebug() << "GymThread::run received request [" << action1 << "] [" << action2 << "] [" << action3 << "]";
+        // int action;
+        // std::istringstream iss(static_cast<char*>(request.data()));
+        // iss >> action;
+        QStringList action = qstr.split(" ", QString::SkipEmptyParts);
+        // qDebug() << "GymThread::run received request [" << action << "]";
+
 
 
         // TODO keep track when agent sends first message
@@ -75,29 +85,44 @@ void GymThread::run() {
         // instance->gymAgentChange(port); //only on first message
 
 
-        QVariantList action;
-        action << action1 << action2 << action3;
+        // QVariantList action;
+        // action << action1 << action2 << action3;
         QVariantMap message;
         message["action"] = action;
         instance->gymMessage(port, message);        // notify the javascript
 
-        mutex.lock();
         // qDebug() << "GymThread::run emit action";
 
         cond.wait(&mutex);
 
-        // TODO Grab state to send back to client
+        // Grab state to send back to client
+        QString reply_qstr = (state["done"].toBool()) ? "1" : "0";
+        // if (state["done"].toBool()) reply_qstr = "1"; else reply_qstr = "0";
+        reply_qstr = reply_qstr + " " + state["reward"].toString();
+
         QList<QVariant> observation = state["observation"].toList();
-        QString test = observation[0].toString() + " " + observation[1].toString() + " " + observation[2].toString() + " " + observation[3].toString() + " " + state["reward"].toString();
-        if (state["done"].toBool()) test = test + " 1";
-        else test = test + " 0";
-        // qDebug() << "GymThread::run sending reply [" << test << "]";
+        for (QVariant n : observation) {
+            reply_qstr = reply_qstr + " "  + n.toString();
+        }
 
-        QByteArray ba = test.toLocal8Bit();
-        // ba.length
-        const char *c_str2 = ba.data();
+        // for (QVariant n : observation) {
+        //     if (n.userType() == QMetaType::QVariantList) {
+        //         QList<QVariant> m = n.toList();
+        //         for (QVariant o : m) {
+        //             reply_qstr = reply_qstr + " "  + o.toString();
+        //         }
+        //     } else {
+        //         reply_qstr = reply_qstr + " "  + n.toString();
+        //     }
+        // }
 
-        QThread::sleep(0.01);
+        // qDebug() << "GymThread::run sending reply_qstr [" << reply_qstr << "]";
+
+        QByteArray ba = reply_qstr.toLocal8Bit();
+        const char *reply_cstr = ba.data();
+
+
+        // QThread::msleep(10); // add arbitrary delay before replying to agent
 
         // std::ostringstream oss;
         // oss << action1 << " " << action2 << " " << action3 << " " << action3 << " " << action3 << " 0";
@@ -111,8 +136,8 @@ void GymThread::run() {
         // memcpy(reply.data(), request.data(), request.size());
         // zmq::message_t reply(reply_str.length());
         // memcpy(reply.data(), reply_str.c_str(), reply_str.length());
-        zmq::message_t reply(strlen(c_str2));
-        memcpy(reply.data(), c_str2, strlen(c_str2));
+        zmq::message_t reply(strlen(reply_cstr));
+        memcpy(reply.data(), reply_cstr, strlen(reply_cstr));
         socket.send(reply);
         
         mutex.unlock();

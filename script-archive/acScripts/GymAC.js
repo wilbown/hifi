@@ -14,10 +14,12 @@ function getRndInt (min, max) { return Math.floor(Math.random() * (max - min + 1
 function getRndFloat(min, max) { return Math.random() * (max - min) + min; }
 
 // Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
-var zero = { x: 0, y: 0, z: 0 };
+var POS_ZERO = { x: 0, y: 0, z: 0 };
+var DIST_MAX = 40;
+var DIST_NEAR = 5;
 
 // Setup EntityViewer
-EntityViewer.setPosition(zero);
+EntityViewer.setPosition(POS_ZERO);
 EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
 // EntityViewer.setCenterRadius(10);
 
@@ -92,20 +94,30 @@ function update(deltaTime) {
     var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
     if (Object.keys(props).length !== 0) {
         var rwd = 0.0;
-        var obs = [1.0, 1.0, 1.0, 1.0];
+        var obs = [];
         var obsi = 0;
-        var entityIDs = AvatarList.getAvatarsInRange(props.position, 10); //works
+        var entityIDs = AvatarList.getAvatarsInRange(props.position, DIST_MAX);
         for (i = 0; i < entityIDs.length; i++) {
             var avtr = AvatarList.getAvatar(entityIDs[i]);
             if (Object.keys(avtr).length !== 0) {
                 var dist = Vec3.distance(props.position, avtr.position);
-                if (dist > 10) continue;
-                if (dist < 0.5) rwd += 1.0;
+                if (dist > DIST_MAX) continue;
+                if (dist < 0.5) rwd -= 1.0;
+                else if (dist < 1.5) rwd += 0.2;
                 if (dist < 0.0) dist = 0.0;
-                obs[obsi] = dist / 5.0 - 1.0; obsi++;
+                var near = (dist > DIST_NEAR) ? 255 : dist/DIST_NEAR*255;
+                var far = dist/DIST_MAX*255;
+                var rads = Vec3.getAngle(props.position, avtr.position);
+                // print("GymAC::update rads: " + rads);
+                var angle = rads/Math.PI*255;
+                if (angle > 255) angle = 255;
+                obs[obsi++] = 255 - parseInt(near);
+                obs[obsi++] = 255 - parseInt(far);
+                obs[obsi++] = parseInt(angle);
+                if (obsi > 4*4*3) break; //max observation size
             }
         }
-        Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData: JSON.stringify({ observation: obs, reward: rwd}) });
+        Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData:JSON.stringify({ reward:rwd, observation:obs }) });
     }
 }
 
