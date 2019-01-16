@@ -10,18 +10,31 @@
 
 // file:///home/wilbown/GitHub/hifi/script-archive/acScripts/GymAC.js
 
-function getRndInt (min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function getRndInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function getRndFloat(min, max) { return Math.random() * (max - min) + min; }
 
 // Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
-var POS_ZERO = { x: 0, y: 0, z: 0 };
+var POS_ZERO = { x: 0, y: 1, z: 0 };
 var DIST_MAX = 40;
 var DIST_NEAR = 5;
 
+var MOVE_X = { x: 0.01, y: 0, z: 0 };
+var MOVE_Y = { x: 0, y: 0.001, z: 0 };
+var MOVE_Z = { x: 0, y: 0, z: 0.01 };
+var MOVE_FAST_X = { x: 0.1, y: 0, z: 0 };
+var MOVE_FAST_Z = { x: 0, y: 0, z: 0.1 };
+
+var COLOR_ZERO = { red: 255, green: 255, blue: 0 };
+// var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
+// var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
+var COLOR_MAD = { red: 255, green: 0, blue: 0 };
+var COLOR_HAPPY = { red: 0, green: 255, blue: 0 };
+var COLOR_COOL = { red: 0, green: 0, blue: 255 };
+
 // Setup EntityViewer
 EntityViewer.setPosition(POS_ZERO);
-EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
-// EntityViewer.setCenterRadius(10);
+// EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
+EntityViewer.setCenterRadius(1000);
 
 // var timePassed = 0.0;
 // var updateSpeed = 5.0; // seconds
@@ -30,9 +43,9 @@ EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
 //     if (timePassed > updateSpeed) {
 //         timePassed = 0.0;
 //         EntityViewer.queryOctree();
-//         // print("GymAC::update NEW");
-//         // print("GymAC::update path: " + Script.resolvePath("/")); // "file://"
-//         // print("GymAC::update path: " + Script.resolvePath("")); // file:///home/wilbown/GitHub/hifi/script-archive/acScripts/GymAC.js
+//         // print("GymAC.update NEW");
+//         // print("GymAC.update path: " + Script.resolvePath("/")); // "file://"
+//         // print("GymAC.update path: " + Script.resolvePath("")); // file:///home/wilbown/GitHub/hifi/script-archive/acScripts/GymAC.js
 
 
 //         // var position = Avatar.position;
@@ -48,12 +61,12 @@ EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
 
 //         // var entityIDs = AvatarList.getAvatarsInRange([0, 0, 0], 10); //works
 //         // // var entityIDs = AvatarList.getAvatarIdentifiers(); //works, gets all on server
-//         // // print("GymAC::update Entities.num entities: " + entityIDs.length);
+//         // // print("GymAC.update Entities.num entities: " + entityIDs.length);
 //         // for (var key in entityIDs) {
 //         //     var type = entityIDs[key];
 //         //     // var type = Entities.getEntityProperties(entityIDs[key]).position;
 //         //     // var type = AvatarList.getAvatar(entityIDs[key]);
-//         //     print("GymAC::update Entities.num entities.type: " + JSON.stringify(type));
+//         //     print("GymAC.update Entities.num entities.type: " + JSON.stringify(type));
 //         // }
 
 //         // var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
@@ -88,45 +101,156 @@ EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
 // }
 
 
+var agent = 5558;
+
+var environment = { // observation = object, info = dictionary
+    observation: [],
+    reward: 0.0,
+    done: false,
+    info: {error: null},
+}
+
+var entityID = "{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}";
+
 function update(deltaTime) {
+    if (!Entities.serversExist() || !Entities.canRez()) return;
     EntityViewer.queryOctree();
 
-    var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
-    if (Object.keys(props).length !== 0) {
-        var rwd = 0.0;
-        var obs = [];
-        var obsi = 0;
-        var entityIDs = AvatarList.getAvatarsInRange(props.position, DIST_MAX);
-        for (i = 0; i < entityIDs.length; i++) {
-            var avtr = AvatarList.getAvatar(entityIDs[i]);
-            if (Object.keys(avtr).length !== 0) {
-                var dist = Vec3.distance(props.position, avtr.position);
-                if (dist > DIST_MAX) continue;
-                if (dist < 0.5) rwd -= 1.0;
-                else if (dist < 1.5) rwd += 0.2;
-                if (dist < 0.0) dist = 0.0;
-                var near = (dist > DIST_NEAR) ? 255 : dist/DIST_NEAR*255;
-                var far = dist/DIST_MAX*255;
-                var rads = Vec3.getAngle(props.position, avtr.position);
-                // print("GymAC::update rads: " + rads);
-                var angle = rads/Math.PI*255;
-                if (angle > 255) angle = 255;
-                obs[obsi++] = 255 - parseInt(near);
-                obs[obsi++] = 255 - parseInt(far);
-                obs[obsi++] = parseInt(angle);
-                if (obsi > 4*4*3) break; //max observation size
-            }
-        }
-        Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData:JSON.stringify({ reward:rwd, observation:obs }) });
+    var entity = Entities.getEntityProperties(this.entityID);
+    if (Object.keys(entity).length === 0) return; // entity does not exist yet
+
+    var rwd = 0.0;
+    var obs = [];
+    var obsi = 0;
+
+    // Add entity position
+    var edist = Vec3.distance(entity.position, POS_ZERO);
+    var erads = Vec3.getAngle(entity.position, POS_ZERO);
+    var epose = getPose(edist, erads);
+    epose.forEach(function(e){ obs[obsi++] = e; });
+
+    // Out of bounds, reset
+    if (edist > DIST_MAX/2) {
+        rwd -= 6.0;
+        // print("GymAC.update: OUT OF BOUNDS " + edist);
+        Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+        // this.environment.done = true;
     }
+
+    // See local avatars
+    var avatarIDs = AvatarList.getAvatarsInRange(entity.position, DIST_MAX);
+    for (i = 0; i < avatarIDs.length; i++) {
+        var avtr = AvatarList.getAvatar(avatarIDs[i]);
+        if (Object.keys(avtr).length === 0) continue; // avatar doesn't exist?
+
+        var dist = Vec3.distance(entity.position, avtr.position);
+        var rads = Vec3.getAngle(entity.position, avtr.position);
+
+        if (dist > DIST_MAX) continue;
+        if (dist < 0.5) rwd -= 1.0;
+        else if (dist < 1.5) rwd += 0.2;
+
+        var pose = getPose(dist, rads);
+        pose.forEach(function(e){ obs[obsi++] = e; });
+        if (obsi > 4*4*3) break; //max observation size
+    }
+    
+    // Entities.editEntity(this.entityID, { userData:JSON.stringify({ reward:rwd, observation:obs }) });
+    this.environment.reward = rwd;
+    this.environment.observation = obs;
+}
+
+function getPose(dist, rads) {
+    if (dist < 0.0) dist = 0.0;
+    var near = (dist > DIST_NEAR) ? 255 : dist/DIST_NEAR*255;
+    var far = dist/DIST_MAX*255;
+    // print("GymAC.update rads: " + rads);
+    var angle = rads/Math.PI*255;
+    if (angle > 255) angle = 255;
+    var pose = [];
+    pose[0] = 255 - parseInt(near);
+    pose[1] = 255 - parseInt(far);
+    pose[2] = parseInt(angle);
+    return pose;
+}
+
+// function handleGymAgentChange(_agent) {
+//     print("GymAC.handleGymAgentChange _agent: " + _agent);
+//     this.agent = _agent;
+
+//     // TODO send gym action_space and observation_space vars to agent when first connecting
+
+//     // action_space = spaces.Discrete(18)
+//     // observation_space = spaces.Box(low=0, high=255, shape=(4,4,3), dtype=np.uint8)
+//     // message = {
+//     //     action_space: {low: [0.0, 0.0, 0.0], high: [1.0, 1.0, 1.0], type:"float32"},
+//     //     observation_space: {low: [-1.0, -1.0, -1.0, -1.0], high: [1.0, 1.0, 1.0, 1.0], type:"float32"},
+//     // };
+//     // Gym.sendGymMessage(this.agent, message);
+// }
+
+function handleGymMessage(_message) {
+    // print("GymAC.handleGymMessage agent: " + this.agent);
+    // print("GymAC.handleGymMessage _message: "+JSON.stringify(_message));
+
+    // if (_message.agent != this.agent) return; //ignore other agents
+
+    // Execute action
+    var action = _message.message.action[0];
+    // print("GymAC.handleGymMessage: action: "+JSON.stringify(action));
+
+    var entity = Entities.getEntityProperties(this.entityID);
+    if (Object.keys(entity).length !== 0) { // entity does not exist
+        if (action == "reset") {
+            Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+        } else if (action == 0) {
+            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_X) });
+        } else if (action == 1) {
+            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Y) });
+        } else if (action == 2) {
+            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Z) });
+        } else if (action == 3) {
+            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_X) });
+        } else if (action == 4) {
+            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Y) });
+        } else if (action == 5) {
+            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Z) });
+        } else if (action == 6) {
+            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_X) });
+        } else if (action == 7) {
+            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_Z) });
+        } else if (action == 8) {
+            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_X) });
+        } else if (action == 9) {
+            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_Z) });
+        } else if (action == 15) {
+            Entities.editEntity(this.entityID, { color: COLOR_MAD });
+        } else if (action == 16) {
+            Entities.editEntity(this.entityID, { color: COLOR_HAPPY });
+        } else if (action == 17) {
+            Entities.editEntity(this.entityID, { color: COLOR_COOL });
+        } else {
+            // Entities.editEntity(this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
+            // Entities.editEntity(this.entityID, { color: { red: 10 * action, green: 10 * action, blue: 10 * action} });
+        }
+    }
+
+    // Return environment
+    // this.update(0);
+    Gym.sendGymMessage(this.agent, this.environment);
 }
 
 function unload() {
     Script.update.disconnect(update);
+    Gym.onGymMessage.disconnect(handleGymMessage);
+    // Gym.onGymAgentChange.disconnect(handleGymAgentChange);
 }
 
+// Gym.onGymAgentChange.connect(handleGymAgentChange);
+Gym.onGymMessage.connect(handleGymMessage);
 Script.update.connect(update);
 Script.scriptEnding.connect(unload);
+
 
 // getAvatar = {"objectName":"",
 // "position":{"x":-0.05963579937815666,"y":1.0846925973892212,"z":-0.2838750183582306},
@@ -190,3 +314,4 @@ Script.scriptEnding.connect(unload);
 // "grab":{"grabbable":false,"grabKinematic":true,"grabFollowsController":true,"triggerable":true,"equippable":false,"equippableLeftPosition":{"x":0,"y":0,"z":0},"equippableLeftRotation":{"x":-0.0000152587890625,"y":-0.0000152587890625,"z":-0.0000152587890625,"w":1},"equippableRightPosition":{"x":0,"y":0,"z":0},"equippableRightRotation":{"x":-0.0000152587890625,"y":-0.0000152587890625,"z":-0.0000152587890625,"w":1},"equippableIndicatorURL":"","equippableIndicatorScale":{"x":1,"y":1,"z":1},"equippableIndicatorOffset":{"x":0,"y":0,"z":0}},
 // "renderInfo":{},
 // "clientOnly":false,"avatarEntity":false,"localEntity":false}
+

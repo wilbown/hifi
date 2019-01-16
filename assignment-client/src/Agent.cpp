@@ -58,6 +58,8 @@
 #include "AbstractAudioInterface.h"
 #include "AgentScriptingInterface.h"
 
+#include <Gym.h>
+
 static const int RECEIVED_AUDIO_STREAM_CAPACITY_FRAMES = 10;
 
 Agent::Agent(ReceivedMessage& message) :
@@ -98,6 +100,8 @@ Agent::Agent(ReceivedMessage& message) :
 
     DependencyManager::set<RecordingScriptingInterface>();
     DependencyManager::set<UsersScriptingInterface>();
+
+    DependencyManager::set<Gym>();
 
     // Needed to ensure the creation of the DebugDraw instance on the main thread
     DebugDraw::getInstance();
@@ -215,12 +219,12 @@ void Agent::requestScript() {
         scriptURL = QUrl(_payload);
     }
 
-    // // make sure this is not a script request for the file scheme
-    // if (scriptURL.scheme() == HIFI_URL_SCHEME_FILE) {
-    //     qWarning() << "Cannot load script for Agent from local filesystem.";
-    //     scriptRequestFinished();
-    //     return;
-    // }
+    // make sure this is not a script request for the file scheme
+    if (scriptURL.scheme() == HIFI_URL_SCHEME_FILE) {
+        qWarning() << "Cannot load script for Agent from local filesystem.";
+        // scriptRequestFinished();
+        // return;
+    }
 
     auto request = DependencyManager::get<ResourceManager>()->createResourceRequest(
         this, scriptURL, true, -1, "Agent::requestScript");

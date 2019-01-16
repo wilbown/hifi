@@ -764,7 +764,7 @@ void NodeList::pingPunchForInactiveNode(const SharedNodePointer& node) {
     const int NUM_DEBUG_CONNECTION_ATTEMPTS = 1000 / (UDP_PUNCH_PING_INTERVAL_MS);
 
     if (node->getConnectionAttempts() > 0 && node->getConnectionAttempts() % NUM_DEBUG_CONNECTION_ATTEMPTS == 0) {
-        qCDebug(networking) << "No response to UDP hole punch pings for node" << node->getUUID() << "in last second.";
+        // qCDebug(networking) << "No response to UDP hole punch pings for node" << node->getUUID() << "in last second.";
     }
     
     auto nodeID = node->getUUID();

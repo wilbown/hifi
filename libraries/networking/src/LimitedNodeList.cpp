@@ -435,7 +435,7 @@ qint64 LimitedNodeList::sendPacket(std::unique_ptr<NLPacket> packet, const Node&
 
         return sendPacket(std::move(packet), *activeSocket, destinationNode.getAuthenticateHash());
     } else {
-        qCDebug(networking) << "LimitedNodeList::sendPacket called without active socket for node" << destinationNode << "- not sending";
+        // qCDebug(networking) << "LimitedNodeList::sendPacket called without active socket for node" << destinationNode << "- not sending";
         return ERROR_SENDING_PACKET_BYTES;
     }
 }
@@ -530,8 +530,8 @@ qint64 LimitedNodeList::sendPacketList(std::unique_ptr<NLPacketList> packetList,
 qint64 LimitedNodeList::sendPacket(std::unique_ptr<NLPacket> packet, const Node& destinationNode,
                                    const HifiSockAddr& overridenSockAddr) {
     if (overridenSockAddr.isNull() && !destinationNode.getActiveSocket()) {
-        qCDebug(networking) << "LimitedNodeList::sendPacket called without active socket for node"
-                            << destinationNode.getUUID() << ". Not sending.";
+        // qCDebug(networking) << "LimitedNodeList::sendPacket called without active socket for node"
+        //                     << destinationNode.getUUID() << ". Not sending.";
         return ERROR_SENDING_PACKET_BYTES;
     }
 

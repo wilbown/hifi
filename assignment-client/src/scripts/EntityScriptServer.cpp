@@ -30,7 +30,6 @@
 #include <SoundCacheScriptingInterface.h>
 #include <UUID.h>
 #include <WebSocketServerClass.h>
-#include <Gym.h>
 
 #include <EntityScriptClient.h> // for EntityScriptServerServices
 
@@ -75,8 +74,6 @@ EntityScriptServer::EntityScriptServer(ReceivedMessage& message) : ThreadedAssig
     DependencyManager::set<SoundCache>();
     DependencyManager::set<SoundCacheScriptingInterface>();
     DependencyManager::set<AudioInjectorManager>();
-
-    DependencyManager::set<Gym>();
 
     DependencyManager::set<ScriptCache>();
 
