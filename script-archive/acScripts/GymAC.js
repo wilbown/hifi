@@ -110,7 +110,7 @@ var environment = { // observation = object, info = dictionary
     info: {error: null},
 }
 
-var entityID = "{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}";
+var entityID = "{8da1a545-0abe-4001-98d6-2358bb34f8fd}";
 
 function update(deltaTime) {
     if (!Entities.serversExist() || !Entities.canRez()) return;
@@ -131,10 +131,10 @@ function update(deltaTime) {
 
     // Out of bounds, reset
     if (edist > DIST_MAX/2) {
-        rwd -= 6.0;
         // print("GymAC.update: OUT OF BOUNDS " + edist);
+        rwd -= 6.0;
+        this.environment.done = true;
         Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
-        // this.environment.done = true;
     }
 
     // See local avatars
@@ -147,8 +147,15 @@ function update(deltaTime) {
         var rads = Vec3.getAngle(entity.position, avtr.position);
 
         if (dist > DIST_MAX) continue;
-        if (dist < 0.5) rwd -= 1.0;
+        if (dist < 0.1) {
+            rwd -= 6.0;
+            this.environment.done = true;
+            Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+        }
+        else if (dist < 0.5) rwd -= 1.0;
         else if (dist < 1.5) rwd += 0.2;
+        else if (dist < 5) rwd += 0.03;
+        else if (dist < 10) rwd += 0.01;
 
         var pose = getPose(dist, rads);
         pose.forEach(function(e){ obs[obsi++] = e; });
@@ -202,7 +209,7 @@ function handleGymMessage(_message) {
     var entity = Entities.getEntityProperties(this.entityID);
     if (Object.keys(entity).length !== 0) { // entity does not exist
         if (action == "reset") {
-            Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+            // Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
         } else if (action == 0) {
             Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_X) });
         } else if (action == 1) {
@@ -238,6 +245,7 @@ function handleGymMessage(_message) {
     // Return environment
     // this.update(0);
     Gym.sendGymMessage(this.agent, this.environment);
+    if (this.environment.done) this.environment.done = false; // make sure to send, reset after send
 }
 
 function unload() {
