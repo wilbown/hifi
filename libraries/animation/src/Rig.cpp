@@ -390,7 +390,7 @@ void Rig::reset(const HFMModel& hfmModel) {
 
     buildAbsoluteRigPoses(_animSkeleton->getRelativeDefaultPoses(), _absoluteDefaultPoses);
 
-    _rootJointIndex = indexOfJoint("Hips");
+    _rootJointIndex = indexOfJoint("Hips");;
     _leftEyeJointIndex = indexOfJoint("LeftEye");
     _rightEyeJointIndex = indexOfJoint("RightEye");
     _leftHandJointIndex = indexOfJoint("LeftHand");

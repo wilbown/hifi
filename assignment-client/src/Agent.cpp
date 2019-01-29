@@ -432,6 +432,10 @@ void Agent::executeScript() {
         using namespace recording;
         static const FrameType AUDIO_FRAME_TYPE = Frame::registerFrameType(AudioConstants::getAudioFrameName());
         Frame::registerFrameHandler(AUDIO_FRAME_TYPE, [this, &scriptedAvatar](Frame::ConstPointer frame) {
+            if (_shouldMuteRecordingAudio) {
+                return;
+            }
+
             static quint16 audioSequenceNumber{ 0 };
 
             QByteArray audio(frame->data);
@@ -759,7 +763,11 @@ void Agent::processAgentAvatarAudio() {
         int16_t numAvailableSamples = AudioConstants::NETWORK_FRAME_SAMPLES_PER_CHANNEL;
         const int16_t* nextSoundOutput = NULL;
 
-        if (_avatarSound) {
+        if (_avatarSound && _avatarSound->isReady()) {
+            if (isPlayingRecording && !_shouldMuteRecordingAudio) {
+                _shouldMuteRecordingAudio = true;
+            }
+            
             auto audioData = _avatarSound->getAudioData();
             nextSoundOutput = reinterpret_cast<const int16_t*>(audioData->rawData()
                     + _numAvatarSoundSentBytes);
@@ -785,6 +793,10 @@ void Agent::processAgentAvatarAudio() {
                 _avatarSound.clear();
                 _numAvatarSoundSentBytes = 0;
                 _flushEncoder = true;
+
+                if (_shouldMuteRecordingAudio) {
+                    _shouldMuteRecordingAudio = false;
+                }
             }
         }
 

@@ -91,7 +91,6 @@ EntityMotionState::EntityMotionState(btCollisionShape* shape, EntityItemPointer 
     _serverRotation = localTransform.getRotation();
     _serverAcceleration = _entity->getAcceleration();
     _serverActionData = _entity->getDynamicData();
-
 }
 
 EntityMotionState::~EntityMotionState() {
@@ -212,6 +211,7 @@ PhysicsMotionType EntityMotionState::computePhysicsMotionType() const {
     }
     if (_entity->isMovingRelativeToParent() ||
         _entity->hasActions() ||
+        _entity->hasGrabs() ||
         _entity->hasAncestorOfType(NestableType::Avatar)) {
         return MOTION_TYPE_KINEMATIC;
     }

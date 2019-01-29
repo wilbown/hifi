@@ -533,7 +533,6 @@ bool GLTFSerializer::parseGLTF(const QByteArray& data) {
     
     QJsonDocument d = QJsonDocument::fromJson(data);
     QJsonObject jsFile = d.object();
-
     bool success = setAsset(jsFile);
     if (success) {
         QJsonArray accessors;
@@ -891,7 +890,6 @@ bool GLTFSerializer::buildGeometry(HFMModel& hfmModel, const QUrl& url) {
                 }
 
                 mesh.meshIndex = hfmModel.meshes.size();
-                FBXSerializer::buildModelMesh(mesh, url.toString());
             }
             
         }
