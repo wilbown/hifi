@@ -296,6 +296,8 @@ public:
 
     glm::vec3 palmDirection;
 
+    glm::vec3 neckPivot;
+
     Extents bindExtents;
     Extents meshExtents;
 

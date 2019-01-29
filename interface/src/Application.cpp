@@ -5248,7 +5248,7 @@ void Application::resumeAfterLoginDialogActionTaken() {
     myAvatar->setSkeletonModelURLFromScript(_previousAvatarSkeletonModel);
     myAvatar->setEnableMeshVisible(true);
 
-     _controllerScriptingInterface->enableMapping(STANDARD_TO_ACTION_MAPPING_NAME);
+    _controllerScriptingInterface->enableMapping(STANDARD_TO_ACTION_MAPPING_NAME);
 
     const auto& nodeList = DependencyManager::get<NodeList>();
     nodeList->getDomainHandler().setInterstitialModeEnabled(_interstitialModeEnabled);

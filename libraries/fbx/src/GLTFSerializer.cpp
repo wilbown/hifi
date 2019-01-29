@@ -1189,6 +1189,8 @@ void GLTFSerializer::hfmDebugDump(const HFMModel& hfmModel) {
 
     qCDebug(modelformat) << "  palmDirection = " << hfmModel.palmDirection;
 
+    qCDebug(modelformat) << "  neckPivot = " << hfmModel.neckPivot;
+
     qCDebug(modelformat) << "  bindExtents.size() = " << hfmModel.bindExtents.size();
     qCDebug(modelformat) << "  meshExtents.size() = " << hfmModel.meshExtents.size();
 
