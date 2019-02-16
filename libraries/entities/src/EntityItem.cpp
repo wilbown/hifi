@@ -3509,8 +3509,6 @@ void EntityItem::removeGrab(GrabPointer grab) {
         setAngularVelocity(glm::vec3(0.0f));
     }
 
-    markDirtyFlags(Simulation::DIRTY_MOTION_TYPE);
-
     QUuid actionID = grab->getActionID();
     if (!actionID.isNull()) {
         EntityDynamicPointer action = _grabActions.value(actionID);

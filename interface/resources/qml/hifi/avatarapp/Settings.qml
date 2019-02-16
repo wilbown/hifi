@@ -278,14 +278,13 @@ Rectangle {
                 Layout.column: 0
                 text: "Avatar to avatar collision"
             }
-            
+
             ButtonGroup {
                 id: otherAvatarsOnOff
             }
-            
+
             HifiControlsUit.RadioButton {
                 id: otherAvatarsCollisionsEnabledRadiobutton
-
 
                 Layout.row: 1
                 Layout.column: 1
@@ -305,22 +304,6 @@ Rectangle {
 
                 Layout.row: 1
                 Layout.column: 2
-                Layout.rightMargin: -15
-
-                ButtonGroup.group: otherAvatarsOnOff
-
-                colorScheme: hifi.colorSchemes.light
-                fontSize: 17
-                letterSpacing: 1.4
-                text: "Off"
-                boxSize: 20
-            }
-
-            HifiControlsUit.RadioButton {
-                id: otherAvatarsCollisionsDisabledRadiobutton
-
-                Layout.row: 1
-                Layout.column: 3
                 Layout.rightMargin: -15
 
                 ButtonGroup.group: otherAvatarsOnOff
