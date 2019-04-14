@@ -110,7 +110,7 @@ var environment = { // observation = object, info = dictionary
     info: {error: null},
 }
 
-var entityID = "{8da1a545-0abe-4001-98d6-2358bb34f8fd}";
+var entityID = "{f3273714-5e19-4ceb-8ff1-67981dcc3890}";
 
 function update(deltaTime) {
     if (!Entities.serversExist() || !Entities.canRez()) return;
