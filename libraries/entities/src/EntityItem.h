@@ -37,8 +37,6 @@
 #include "EntityDynamicInterface.h"
 #include "GrabPropertyGroup.h"
 
-#include "graphics/Material.h"
-
 class EntitySimulation;
 class EntityTreeElement;
 class EntityTreeElementExtraEncodeData;
@@ -199,7 +197,7 @@ public:
     void setDescription(const QString& value);
 
     /// Dimensions in meters (0.0 - TREE_SCALE)
-    glm::vec3 getScaledDimensions() const;
+    virtual glm::vec3 getScaledDimensions() const;
     virtual void setScaledDimensions(const glm::vec3& value);
     virtual glm::vec3 getRaycastDimensions() const { return getScaledDimensions(); }
 
@@ -371,6 +369,8 @@ public:
     void setEntityInstanceNumber(const quint32&);
     QString getCertificateID() const;
     void setCertificateID(const QString& value);
+    QString getCertificateType() const;
+    void setCertificateType(const QString& value);
     quint32 getStaticCertificateVersion() const;
     void setStaticCertificateVersion(const quint32&);
 
@@ -516,11 +516,11 @@ public:
     QUuid getLastEditedBy() const { return _lastEditedBy; }
     void setLastEditedBy(QUuid value) { _lastEditedBy = value; }
 
-    bool matchesJSONFilters(const QJsonObject& jsonFilters) const;
+    virtual bool matchesJSONFilters(const QJsonObject& jsonFilters) const;
 
     virtual bool getMeshes(MeshProxyList& result) { return true; }
 
-    virtual void locationChanged(bool tellPhysics = true) override;
+    virtual void locationChanged(bool tellPhysics = true, bool tellChildren = true) override;
 
     virtual bool getScalesWithParent() const override;
 
@@ -542,10 +542,6 @@ public:
     virtual void preDelete();
     virtual void postParentFixup() {}
 
-    void addMaterial(graphics::MaterialLayer material, const std::string& parentMaterialName);
-    void removeMaterial(graphics::MaterialPointer material, const std::string& parentMaterialName);
-    std::unordered_map<std::string, graphics::MultiMaterial> getMaterials();
-
     void setSimulationOwnershipExpiry(uint64_t expiry) { _simulationOwnershipExpiry = expiry; }
     uint64_t getSimulationOwnershipExpiry() const { return _simulationOwnershipExpiry; }
 
@@ -561,6 +557,12 @@ public:
 
     virtual void addGrab(GrabPointer grab) override;
     virtual void removeGrab(GrabPointer grab) override;
+    virtual void disableGrab(GrabPointer grab) override;
+
+    static void setBillboardRotationOperator(std::function<glm::quat(const glm::vec3&, const glm::quat&, BillboardMode, const glm::vec3&)> getBillboardRotationOperator) { _getBillboardRotationOperator = getBillboardRotationOperator; }
+    static glm::quat getBillboardRotation(const glm::vec3& position, const glm::quat& rotation, BillboardMode billboardMode, const glm::vec3& frustumPos) { return _getBillboardRotationOperator(position, rotation, billboardMode, frustumPos); }
+    static void setPrimaryViewFrustumPositionOperator(std::function<glm::vec3()> getPrimaryViewFrustumPositionOperator) { _getPrimaryViewFrustumPositionOperator = getPrimaryViewFrustumPositionOperator; }
+    static glm::vec3 getPrimaryViewFrustumPosition() { return _getPrimaryViewFrustumPositionOperator(); }
 
 signals:
     void requestRenderUpdate();
@@ -653,6 +655,7 @@ protected:
     QString _itemLicense { ENTITY_ITEM_DEFAULT_ITEM_LICENSE };
     quint32 _limitedRun { ENTITY_ITEM_DEFAULT_LIMITED_RUN };
     QString _certificateID { ENTITY_ITEM_DEFAULT_CERTIFICATE_ID };
+    QString _certificateType { ENTITY_ITEM_DEFAULT_CERTIFICATE_TYPE };
     quint32 _editionNumber { ENTITY_ITEM_DEFAULT_EDITION_NUMBER };
     quint32 _entityInstanceNumber { ENTITY_ITEM_DEFAULT_ENTITY_INSTANCE_NUMBER };
     QString _marketplaceID { ENTITY_ITEM_DEFAULT_MARKETPLACE_ID };
@@ -750,9 +753,8 @@ protected:
     QHash<QUuid, EntityDynamicPointer> _grabActions;
 
 private:
-    std::unordered_map<std::string, graphics::MultiMaterial> _materials;
-    std::mutex _materialsLock;
-
+    static std::function<glm::quat(const glm::vec3&, const glm::quat&, BillboardMode, const glm::vec3&)> _getBillboardRotationOperator;
+    static std::function<glm::vec3()> _getPrimaryViewFrustumPositionOperator;
 };
 
 #endif // hifi_EntityItem_h

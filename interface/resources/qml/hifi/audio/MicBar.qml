@@ -11,11 +11,20 @@
 
 import QtQuick 2.5
 import QtGraphicalEffects 1.0
+import stylesUit 1.0
 
 import TabletScriptingInterface 1.0
 
 Rectangle {
+    HifiConstants { id: hifi; }
+
     readonly property var level: AudioScriptingInterface.inputLevel;
+
+    property bool gated: false;
+    Component.onCompleted: {
+        AudioScriptingInterface.noiseGateOpened.connect(function() { gated = false; });
+        AudioScriptingInterface.noiseGateClosed.connect(function() { gated = true; });
+    }
 
     property bool standalone: false;
     property var dragTarget: null;
@@ -58,6 +67,9 @@ Rectangle {
         hoverEnabled: true;
         scrollGestureEnabled: false;
         onClicked: {
+            if (AudioScriptingInterface.pushToTalk) {
+                return;
+            }
             AudioScriptingInterface.muted = !AudioScriptingInterface.muted;
             Tablet.playSound(TabletEnums.ButtonClick);
         }
@@ -77,6 +89,7 @@ Rectangle {
         readonly property string gutter: "#575757";
         readonly property string greenStart: "#39A38F";
         readonly property string greenEnd: "#1FC6A6";
+        readonly property string yellow: "#C0C000";
         readonly property string red: colors.muted;
         readonly property string fill: "#55000000";
         readonly property string border: standalone ? "#80FFFFFF" : "#55FFFFFF";
@@ -99,9 +112,10 @@ Rectangle {
             Image {
                 readonly property string unmutedIcon: "../../../icons/tablet-icons/mic-unmute-i.svg";
                 readonly property string mutedIcon: "../../../icons/tablet-icons/mic-mute-i.svg";
+                readonly property string pushToTalkIcon: "../../../icons/tablet-icons/mic-ptt-i.svg";
 
                 id: image;
-                source: AudioScriptingInterface.muted ? mutedIcon : unmutedIcon;
+                source: (AudioScriptingInterface.pushToTalk && !AudioScriptingInterface.pushingToTalk) ? pushToTalkIcon : AudioScriptingInterface.muted ? mutedIcon : unmutedIcon;
 
                 width: 30;
                 height: 30;
@@ -126,7 +140,7 @@ Rectangle {
 
         readonly property string color: AudioScriptingInterface.muted ? colors.muted : colors.unmuted;
 
-        visible: AudioScriptingInterface.muted;
+        visible: (AudioScriptingInterface.pushToTalk && !AudioScriptingInterface.pushingToTalk) || AudioScriptingInterface.muted;
 
         anchors {
             left: parent.left;
@@ -145,7 +159,7 @@ Rectangle {
 
             color: parent.color;
 
-            text: AudioScriptingInterface.muted ? "MUTED" : "MUTE";
+            text: (AudioScriptingInterface.pushToTalk && !AudioScriptingInterface.pushingToTalk) ? (HMD.active ? "MUTED PTT" : "MUTED PTT-(T)") : (AudioScriptingInterface.muted ? "MUTED" : "MUTE");
             font.pointSize: 12;
         }
 
@@ -155,7 +169,7 @@ Rectangle {
                 verticalCenter: parent.verticalCenter;
             }
 
-            width: 50;
+            width: AudioScriptingInterface.pushToTalk && !AudioScriptingInterface.pushingToTalk ? (HMD.active ? 27 : 25) : 50;
             height: 4;
             color: parent.color;
         }
@@ -166,7 +180,7 @@ Rectangle {
                 verticalCenter: parent.verticalCenter;
             }
 
-            width: 50;
+            width: AudioScriptingInterface.pushToTalk && !AudioScriptingInterface.pushingToTalk ? (HMD.active ? 27 : 25) : 50;
             height: 4;
             color: parent.color;
         }
@@ -189,7 +203,7 @@ Rectangle {
 
         Rectangle { // mask
             id: mask;
-            width: parent.width * level;
+            width: gated ? 0 : parent.width * level;
             radius: 5;
             anchors {
                 bottom: parent.bottom;
@@ -212,17 +226,41 @@ Rectangle {
                     color: colors.greenStart;
                 }
                 GradientStop {
-                    position: 0.8;
+                    position: 0.5;
                     color: colors.greenEnd;
                 }
                 GradientStop {
-                    position: 0.81;
-                    color: colors.red;
-                }
-                GradientStop {
                     position: 1;
-                    color: colors.red;
+                    color: colors.yellow;
                 }
+            }
+        }
+
+        Rectangle {
+            id: gatedIndicator;
+            visible: gated && !AudioScriptingInterface.clipping
+
+            radius: 4;
+            width: 2 * radius;
+            height: 2 * radius;
+            color: "#0080FF";
+            anchors {
+                right: parent.left;
+                verticalCenter: parent.verticalCenter;
+            }
+        }
+
+        Rectangle {
+            id: clippingIndicator;
+            visible: AudioScriptingInterface.clipping
+
+            radius: 4;
+            width: 2 * radius;
+            height: 2 * radius;
+            color: colors.red;
+            anchors {
+                left: parent.right;
+                verticalCenter: parent.verticalCenter;
             }
         }
     }

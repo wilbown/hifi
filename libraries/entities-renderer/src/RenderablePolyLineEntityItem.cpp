@@ -19,12 +19,15 @@
 #include <PerfStat.h>
 #include <shaders/Shaders.h>
 
+#include <DisableDeferred.h>
+
 #include "paintStroke_Shared.slh"
 
 using namespace render;
 using namespace render::entities;
 
 gpu::PipelinePointer PolyLineEntityRenderer::_pipeline = nullptr;
+gpu::PipelinePointer PolyLineEntityRenderer::_glowPipeline = nullptr;
 
 static const QUrl DEFAULT_POLYLINE_TEXTURE = PathUtils::resourcesUrl("images/paintStroke.png");
 
@@ -43,15 +46,28 @@ PolyLineEntityRenderer::PolyLineEntityRenderer(const EntityItemPointer& entity) 
 
 void PolyLineEntityRenderer::buildPipeline() {
     // FIXME: opaque pipeline
-    gpu::ShaderPointer program = gpu::Shader::createProgram(shader::entities_renderer::program::paintStroke);
-    gpu::StatePointer state = gpu::StatePointer(new gpu::State());
-    state->setCullMode(gpu::State::CullMode::CULL_NONE);
-    state->setDepthTest(true, true, gpu::LESS_EQUAL);
-    PrepareStencil::testMask(*state);
-    state->setBlendFunction(true,
-        gpu::State::SRC_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::INV_SRC_ALPHA,
-        gpu::State::FACTOR_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::ONE);
-    _pipeline = gpu::Pipeline::create(program, state);
+    gpu::ShaderPointer program = gpu::Shader::createProgram(DISABLE_DEFERRED ? shader::entities_renderer::program::paintStroke_forward : shader::entities_renderer::program::paintStroke);
+
+    {
+        gpu::StatePointer state = gpu::StatePointer(new gpu::State());
+        state->setCullMode(gpu::State::CullMode::CULL_NONE);
+        state->setDepthTest(true, true, gpu::LESS_EQUAL);
+        PrepareStencil::testMask(*state);
+        state->setBlendFunction(true,
+            gpu::State::SRC_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::INV_SRC_ALPHA,
+            gpu::State::FACTOR_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::ONE);
+        _pipeline = gpu::Pipeline::create(program, state);
+    }
+    {
+        gpu::StatePointer state = gpu::StatePointer(new gpu::State());
+        state->setCullMode(gpu::State::CullMode::CULL_NONE);
+        state->setDepthTest(true, false, gpu::LESS_EQUAL);
+        PrepareStencil::testMask(*state);
+        state->setBlendFunction(true,
+            gpu::State::SRC_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::INV_SRC_ALPHA,
+            gpu::State::FACTOR_ALPHA, gpu::State::BLEND_OP_ADD, gpu::State::ONE);
+        _glowPipeline = gpu::Pipeline::create(program, state);
+    }
 }
 
 ItemKey PolyLineEntityRenderer::getKey() {
@@ -128,7 +144,8 @@ void PolyLineEntityRenderer::doRenderUpdateAsynchronousTyped(const TypedEntityPo
     }
 
     // Data
-    if (faceCamera != _faceCamera || glow != _glow) {
+    bool faceCameraChanged = faceCamera != _faceCamera;
+    if (faceCameraChanged || glow != _glow) {
         _faceCamera = faceCamera;
         _glow = glow;
         updateData();
@@ -148,7 +165,7 @@ void PolyLineEntityRenderer::doRenderUpdateAsynchronousTyped(const TypedEntityPo
         _colors = entity->getStrokeColors();
         _color = toGlm(entity->getColor());
     }
-    if (_isUVModeStretch != isUVModeStretch || pointsChanged || widthsChanged || normalsChanged || colorsChanged || textureChanged) {
+    if (_isUVModeStretch != isUVModeStretch || pointsChanged || widthsChanged || normalsChanged || colorsChanged || textureChanged || faceCameraChanged) {
         _isUVModeStretch = isUVModeStretch;
         updateGeometry();
     }
@@ -156,18 +173,19 @@ void PolyLineEntityRenderer::doRenderUpdateAsynchronousTyped(const TypedEntityPo
 
 void PolyLineEntityRenderer::updateGeometry() {
     int maxNumVertices = std::min(_points.length(), _normals.length());
-
     bool doesStrokeWidthVary = false;
-    if (_widths.size() >= 0) {
+    if (_widths.size() > 0) {
+        float prevWidth = _widths[0];
         for (int i = 1; i < maxNumVertices; i++) {
-            float width = PolyLineEntityItem::DEFAULT_LINE_WIDTH;
-            if (i < _widths.length()) {
-                width = _widths[i];
-            }
-            if (width != _widths[i - 1]) {
+            float width = i < _widths.length() ? _widths[i] : PolyLineEntityItem::DEFAULT_LINE_WIDTH;
+            if (width != prevWidth) {
                 doesStrokeWidthVary = true;
                 break;
             }
+            if (i > _widths.length() + 1) {
+                break;
+            }
+            prevWidth = width;
         }
     }
 
@@ -179,12 +197,13 @@ void PolyLineEntityRenderer::updateGeometry() {
 
     std::vector<PolylineVertex> vertices;
     vertices.reserve(maxNumVertices);
+
     for (int i = 0; i < maxNumVertices; i++) {
         // Position
         glm::vec3 point = _points[i];
-
         // uCoord
         float width = i < _widths.size() ? _widths[i] : PolyLineEntityItem::DEFAULT_LINE_WIDTH;
+
         if (i > 0) { // First uCoord is 0.0f
             if (!_isUVModeStretch) {
                 accumulatedDistance += glm::distance(point, _points[i - 1]);
@@ -220,11 +239,17 @@ void PolyLineEntityRenderer::updateGeometry() {
         // For last point we can assume binormals are the same since it represents the last two vertices of quad
         if (i < maxNumVertices - 1) {
             glm::vec3 tangent = _points[i + 1] - point;
-            binormal = glm::normalize(glm::cross(tangent, normal));
 
-            // Check to make sure binormal is not a NAN. If it is, don't add to vertices vector
-            if (binormal.x != binormal.x) {
-                continue;
+            if (_faceCamera) {
+                // In faceCamera mode, we actually pass the tangent, and recompute the binormal in the shader
+                binormal = tangent;
+            } else {
+                binormal = glm::normalize(glm::cross(tangent, normal));
+
+                // Check to make sure binormal is not a NAN. If it is, don't add to vertices vector
+                if (glm::any(glm::isnan(binormal))) {
+                    continue;
+                }
             }
         }
 
@@ -250,11 +275,11 @@ void PolyLineEntityRenderer::doRender(RenderArgs* args) {
     Q_ASSERT(args->_batch);
     gpu::Batch& batch = *args->_batch;
 
-    if (!_pipeline) {
+    if (!_pipeline || !_glowPipeline) {
         buildPipeline();
     }
 
-    batch.setPipeline(_pipeline);
+    batch.setPipeline(_glow ? _glowPipeline : _pipeline);
     batch.setModelTransform(_renderTransform);
     batch.setResourceTexture(0, _textureLoaded ? _texture->getGPUTexture() : DependencyManager::get<TextureCache>()->getWhiteTexture());
     batch.setResourceBuffer(0, _polylineGeometryBuffer);

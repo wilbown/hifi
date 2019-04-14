@@ -75,7 +75,6 @@ const float PITCH_SPEED_DEFAULT = 75.0f; // degrees/sec
 
 const float MAX_BOOST_SPEED = 0.5f * DEFAULT_AVATAR_MAX_WALKING_SPEED; // action motor gets additive boost below this speed
 const float MIN_AVATAR_SPEED = 0.05f;
-const float MIN_AVATAR_SPEED_SQUARED = MIN_AVATAR_SPEED * MIN_AVATAR_SPEED; // speed is set to zero below this
 
 float MIN_SCRIPTED_MOTOR_TIMESCALE = 0.005f;
 float DEFAULT_SCRIPTED_MOTOR_TIMESCALE = 1.0e6f;
@@ -847,6 +846,7 @@ void MyAvatar::simulate(float deltaTime, bool inView) {
 
         updateOrientation(deltaTime);
         updatePosition(deltaTime);
+        updateViewBoom();
     }
 
     // update sensorToWorldMatrix for camera and hand controllers
@@ -910,21 +910,17 @@ void MyAvatar::simulate(float deltaTime, bool inView) {
         recorder->recordFrame(FRAME_TYPE, toFrame(*this));
     }
 
-    locationChanged();
+    locationChanged(true, false);
     // if a entity-child of this avatar has moved outside of its queryAACube, update the cube and tell the entity server.
     auto entityTreeRenderer = qApp->getEntities();
     EntityTreePointer entityTree = entityTreeRenderer ? entityTreeRenderer->getTree() : nullptr;
     if (entityTree) {
-        bool zoneAllowsFlying = true;
-        bool collisionlessAllowed = true;
+        std::pair<bool, bool> zoneInteractionProperties;
         entityTree->withWriteLock([&] {
-            std::shared_ptr<ZoneEntityItem> zone = entityTreeRenderer->myAvatarZone();
-            if (zone) {
-                zoneAllowsFlying = zone->getFlyingAllowed();
-                collisionlessAllowed = zone->getGhostingAllowed();
-            }
+            zoneInteractionProperties = entityTreeRenderer->getZoneInteractionProperties();
             EntityEditPacketSender* packetSender = qApp->getEntityEditPacketSender();
             forEachDescendant([&](SpatiallyNestablePointer object) {
+                locationChanged(true, false);
                 // we need to update attached queryAACubes in our own local tree so point-select always works
                 // however we don't want to flood the update pipeline with AvatarEntity updates, so we assume
                 // others have all info required to properly update queryAACube of AvatarEntities on their end
@@ -935,7 +931,10 @@ void MyAvatar::simulate(float deltaTime, bool inView) {
             });
         });
         bool isPhysicsEnabled = qApp->isPhysicsEnabled();
-        _characterController.setFlyingAllowed((zoneAllowsFlying && _enableFlying) || !isPhysicsEnabled);
+        bool zoneAllowsFlying = zoneInteractionProperties.first;
+        bool collisionlessAllowed = zoneInteractionProperties.second;
+        _characterController.setZoneFlyingAllowed(zoneAllowsFlying || !isPhysicsEnabled);
+        _characterController.setComfortFlyingAllowed(_enableFlying);
         _characterController.setCollisionlessAllowed(collisionlessAllowed);
     }
 
@@ -1571,7 +1570,7 @@ void MyAvatar::handleChangedAvatarEntityData() {
         entityTree->withWriteLock([&] {
             EntityItemPointer entity = entityTree->addEntity(id, properties);
             if (entity) {
-                packetSender->queueEditEntityMessage(PacketType::EntityAdd, entityTree, id, properties);
+                packetSender->queueEditAvatarEntityMessage(entityTree, id);
             }
         });
     }
@@ -2326,23 +2325,25 @@ void MyAvatar::setSkeletonModelURL(const QUrl& skeletonModelURL) {
 
     std::shared_ptr<QMetaObject::Connection> skeletonConnection = std::make_shared<QMetaObject::Connection>();
     *skeletonConnection = QObject::connect(_skeletonModel.get(), &SkeletonModel::skeletonLoaded, [this, skeletonModelChangeCount, skeletonConnection]() {
-       if (skeletonModelChangeCount == _skeletonModelChangeCount) {
+        if (skeletonModelChangeCount == _skeletonModelChangeCount) {
 
-           if (_fullAvatarModelName.isEmpty()) {
-               // Store the FST file name into preferences
-               const auto& mapping = _skeletonModel->getGeometry()->getMapping();
-               if (mapping.value("name").isValid()) {
-                   _fullAvatarModelName = mapping.value("name").toString();
-               }
-           }
+            if (_fullAvatarModelName.isEmpty()) {
+                // Store the FST file name into preferences
+                const auto& mapping = _skeletonModel->getGeometry()->getMapping();
+                if (mapping.value("name").isValid()) {
+                    _fullAvatarModelName = mapping.value("name").toString();
+                }
+            }
 
-           initHeadBones();
-           _skeletonModel->setCauterizeBoneSet(_headBoneSet);
-           _fstAnimGraphOverrideUrl = _skeletonModel->getGeometry()->getAnimGraphOverrideUrl();
-           initAnimGraph();
-           _skeletonModelLoaded = true;
-       }
-       QObject::disconnect(*skeletonConnection);
+            initHeadBones();
+            _skeletonModel->setCauterizeBoneSet(_headBoneSet);
+            _fstAnimGraphOverrideUrl = _skeletonModel->getGeometry()->getAnimGraphOverrideUrl();
+            initAnimGraph();
+            initFlowFromFST();
+
+            _skeletonModelLoaded = true;
+        }
+        QObject::disconnect(*skeletonConnection);
     });
     
     saveAvatarUrl();
@@ -2954,6 +2955,10 @@ void MyAvatar::initAnimGraph() {
         graphUrl = _fstAnimGraphOverrideUrl;
     } else {
         graphUrl = PathUtils::resourcesUrl("avatar/avatar-animation.json");
+
+#if defined(Q_OS_ANDROID) || defined(HIFI_USE_OPTIMIZED_IK)
+        graphUrl = PathUtils::resourcesUrl("avatar/avatar-animation_withSplineIKNode.json");
+#endif
     }
 
     emit animGraphUrlChanged(graphUrl);
@@ -3323,21 +3328,22 @@ void MyAvatar::updateActionMotor(float deltaTime) {
         direction = Vectors::ZERO;
     }
 
+    float sensorToWorldScale = getSensorToWorldScale();
     if (state == CharacterController::State::Hover) {
         // we're flying --> complex acceleration curve that builds on top of current motor speed and caps at some max speed
 
         float motorSpeed = glm::length(_actionMotorVelocity);
-        float finalMaxMotorSpeed = getSensorToWorldScale() * DEFAULT_AVATAR_MAX_FLYING_SPEED * _walkSpeedScalar;
+        float finalMaxMotorSpeed = sensorToWorldScale * DEFAULT_AVATAR_MAX_FLYING_SPEED * _walkSpeedScalar;
         float speedGrowthTimescale  = 2.0f;
         float speedIncreaseFactor = 1.8f * _walkSpeedScalar;
         motorSpeed *= 1.0f + glm::clamp(deltaTime / speedGrowthTimescale, 0.0f, 1.0f) * speedIncreaseFactor;
-        const float maxBoostSpeed = getSensorToWorldScale() * MAX_BOOST_SPEED;
+        const float maxBoostSpeed = sensorToWorldScale * MAX_BOOST_SPEED;
 
         if (_isPushing) {
             if (motorSpeed < maxBoostSpeed) {
                 // an active action motor should never be slower than this
                 float boostCoefficient = (maxBoostSpeed - motorSpeed) / maxBoostSpeed;
-                motorSpeed += getSensorToWorldScale() * MIN_AVATAR_SPEED * boostCoefficient;
+                motorSpeed += sensorToWorldScale * MIN_AVATAR_SPEED * boostCoefficient;
             } else if (motorSpeed > finalMaxMotorSpeed) {
                 motorSpeed = finalMaxMotorSpeed;
             }
@@ -3348,45 +3354,21 @@ void MyAvatar::updateActionMotor(float deltaTime) {
         const glm::vec2 currentVel = { direction.x, direction.z };
         float scaledSpeed = scaleSpeedByDirection(currentVel, _walkSpeed.get(), _walkBackwardSpeed.get());
         // _walkSpeedScalar is a multiplier if we are in sprint mode, otherwise 1.0
-        _actionMotorVelocity = getSensorToWorldScale() * (scaledSpeed * _walkSpeedScalar)  * direction;
-    }
-
-    float previousBoomLength = _boomLength;
-    float boomChange = getDriveKey(ZOOM);
-    _boomLength += 2.0f * _boomLength * boomChange + boomChange * boomChange;
-    _boomLength = glm::clamp<float>(_boomLength, ZOOM_MIN, ZOOM_MAX);
-
-    // May need to change view if boom length has changed
-    if (previousBoomLength != _boomLength) {
-        qApp->changeViewAsNeeded(_boomLength);
+        _actionMotorVelocity = sensorToWorldScale * (scaledSpeed * _walkSpeedScalar)  * direction;
     }
 }
 
 void MyAvatar::updatePosition(float deltaTime) {
-    if (_motionBehaviors & AVATAR_MOTION_ACTION_MOTOR_ENABLED) {
-        updateActionMotor(deltaTime);
-    }
-
-    vec3 velocity = getWorldVelocity();
-    float sensorToWorldScale = getSensorToWorldScale();
-    float sensorToWorldScale2 = sensorToWorldScale * sensorToWorldScale;
-    const float MOVING_SPEED_THRESHOLD_SQUARED = 0.0001f; // 0.01 m/s
-    if (!_characterController.isEnabledAndReady()) {
-        // _characterController is not in physics simulation but it can still compute its target velocity
-        updateMotors();
-        _characterController.computeNewVelocity(deltaTime, velocity);
-
-        float speed2 = glm::length(velocity);
-        if (speed2 > sensorToWorldScale2 * MIN_AVATAR_SPEED_SQUARED) {
-            // update position ourselves
-            applyPositionDelta(deltaTime * velocity);
+    if (_characterController.isEnabledAndReady()) {
+        if (_motionBehaviors & AVATAR_MOTION_ACTION_MOTOR_ENABLED) {
+            updateActionMotor(deltaTime);
         }
-        measureMotionDerivatives(deltaTime);
-        _moving = speed2 > sensorToWorldScale2 * MOVING_SPEED_THRESHOLD_SQUARED;
-    } else {
+        float sensorToWorldScale = getSensorToWorldScale();
+        float sensorToWorldScale2 = sensorToWorldScale * sensorToWorldScale;
+        vec3 velocity = getWorldVelocity();
         float speed2 = glm::length2(velocity);
+        const float MOVING_SPEED_THRESHOLD_SQUARED = 0.0001f; // 0.01 m/s
         _moving = speed2 > sensorToWorldScale2 * MOVING_SPEED_THRESHOLD_SQUARED;
-
         if (_moving) {
             // scan for walkability
             glm::vec3 position = getWorldPosition();
@@ -3395,6 +3377,18 @@ void MyAvatar::updatePosition(float deltaTime) {
             _characterController.testRayShotgun(position, step, result);
             _characterController.setStepUpEnabled(result.walkable);
         }
+    }
+}
+
+void MyAvatar::updateViewBoom() {
+    float previousBoomLength = _boomLength;
+    float boomChange = getDriveKey(ZOOM);
+    _boomLength += 2.0f * _boomLength * boomChange + boomChange * boomChange;
+    _boomLength = glm::clamp<float>(_boomLength, ZOOM_MIN, ZOOM_MAX);
+
+    // May need to change view if boom length has changed
+    if (previousBoomLength != _boomLength) {
+        qApp->changeViewAsNeeded(_boomLength);
     }
 }
 
@@ -3454,6 +3448,42 @@ void MyAvatar::setGravity(float gravity) {
 
 float MyAvatar::getGravity() {
     return _characterController.getGravity();
+}
+
+void MyAvatar::setSessionUUID(const QUuid& sessionUUID) {
+    QUuid oldSessionID = getSessionUUID();
+    Avatar::setSessionUUID(sessionUUID);
+    QUuid newSessionID = getSessionUUID();
+    if (newSessionID != oldSessionID) {
+        auto treeRenderer = DependencyManager::get<EntityTreeRenderer>();
+        EntityTreePointer entityTree = treeRenderer ? treeRenderer->getTree() : nullptr;
+        if (entityTree) {
+            QList<QUuid> avatarEntityIDs;
+            _avatarEntitiesLock.withReadLock([&] {
+                avatarEntityIDs = _packedAvatarEntityData.keys();
+            });
+            bool sendPackets = !DependencyManager::get<NodeList>()->getSessionUUID().isNull();
+            EntityEditPacketSender* packetSender = qApp->getEntityEditPacketSender();
+            entityTree->withWriteLock([&] {
+                for (const auto& entityID : avatarEntityIDs) {
+                    auto entity = entityTree->findEntityByID(entityID);
+                    if (!entity) {
+                        continue;
+                    }
+                    // update OwningAvatarID so entity can be identified as "ours" later
+                    entity->setOwningAvatarID(newSessionID);
+                    // NOTE: each attached AvatarEntity already have the correct updated parentID
+                    // via magic in SpatiallyNestable, hence we check against newSessionID
+                    if (sendPackets && entity->getParentID() == newSessionID) {
+                        // but when we have a real session and the AvatarEntity is parented to MyAvatar
+                        // we need to update the "packedAvatarEntityData" sent to the avatar-mixer
+                        // because it contains a stale parentID somewhere deep inside
+                        packetSender->queueEditAvatarEntityMessage(entityTree, entityID);
+                    }
+                }
+            });
+        }
+    }
 }
 
 void MyAvatar::increaseSize() {
@@ -5300,6 +5330,21 @@ void MyAvatar::releaseGrab(const QUuid& grabID) {
     bool tellHandler { false };
 
     _avatarGrabsLock.withWriteLock([&] {
+
+        std::map<QUuid, GrabPointer>::iterator itr;
+        itr = _avatarGrabs.find(grabID);
+        if (itr != _avatarGrabs.end()) {
+            GrabPointer grab = itr->second;
+            if (grab) {
+                grab->setReleased(true);
+                bool success;
+                SpatiallyNestablePointer target = SpatiallyNestable::findByID(grab->getTargetID(), success);
+                if (target && success) {
+                    target->disableGrab(grab);
+                }
+            }
+        }
+
         if (_avatarGrabData.remove(grabID)) {
             _grabsToDelete.push_back(grabID);
             tellHandler = true;
@@ -5312,14 +5357,188 @@ void MyAvatar::releaseGrab(const QUuid& grabID) {
     }
 }
 
-void MyAvatar::sendPacket(const QUuid& entityID, const EntityItemProperties& properties) const {
+void MyAvatar::addAvatarHandsToFlow(const std::shared_ptr<Avatar>& otherAvatar) {
+    auto &flow = _skeletonModel->getRig().getFlow();
+    for (auto &handJointName : HAND_COLLISION_JOINTS) {
+        int jointIndex = otherAvatar->getJointIndex(handJointName);
+        if (jointIndex != -1) {
+            glm::vec3 position = otherAvatar->getJointPosition(jointIndex);
+            flow.setOthersCollision(otherAvatar->getID(), jointIndex, position);
+        }
+    }
+}
+
+void MyAvatar::useFlow(bool isActive, bool isCollidable, const QVariantMap& physicsConfig, const QVariantMap& collisionsConfig) {
+    if (QThread::currentThread() != thread()) {
+        QMetaObject::invokeMethod(this, "useFlow",
+            Q_ARG(bool, isActive),
+            Q_ARG(bool, isCollidable),
+            Q_ARG(const QVariantMap&, physicsConfig),
+            Q_ARG(const QVariantMap&, collisionsConfig));
+        return;
+    }
+    if (_skeletonModel->isLoaded()) {
+        auto &flow = _skeletonModel->getRig().getFlow();
+        auto &collisionSystem = flow.getCollisionSystem();
+        if (!flow.isInitialized() && isActive) {
+            _skeletonModel->getRig().initFlow(true);
+        } else {
+            flow.setActive(isActive);
+        }
+        collisionSystem.setActive(isCollidable);
+        auto physicsGroups = physicsConfig.keys();
+        if (physicsGroups.size() > 0) {
+            for (auto &groupName : physicsGroups) {
+                auto settings = physicsConfig[groupName].toMap();
+                FlowPhysicsSettings physicsSettings;
+                if (settings.contains("active")) {
+                    physicsSettings._active = settings["active"].toBool();
+                }
+                if (settings.contains("damping")) {
+                    physicsSettings._damping = settings["damping"].toFloat();
+                }
+                if (settings.contains("delta")) {
+                    physicsSettings._delta = settings["delta"].toFloat();
+                }
+                if (settings.contains("gravity")) {
+                    physicsSettings._gravity = settings["gravity"].toFloat();
+                }
+                if (settings.contains("inertia")) {
+                    physicsSettings._inertia = settings["inertia"].toFloat();
+                }
+                if (settings.contains("radius")) {
+                    physicsSettings._radius = settings["radius"].toFloat();
+                }
+                if (settings.contains("stiffness")) {
+                    physicsSettings._stiffness = settings["stiffness"].toFloat();
+                }
+                flow.setPhysicsSettingsForGroup(groupName, physicsSettings);
+            }
+        }
+        auto collisionJoints = collisionsConfig.keys();
+        if (collisionJoints.size() > 0) {
+            collisionSystem.resetCollisions();
+            for (auto &jointName : collisionJoints) {
+                int jointIndex = getJointIndex(jointName);
+                FlowCollisionSettings collisionsSettings;
+                auto settings = collisionsConfig[jointName].toMap();
+                collisionsSettings._entityID = getID();
+                if (settings.contains("radius")) {
+                    collisionsSettings._radius = settings["radius"].toFloat();
+                }
+                if (settings.contains("offset")) {
+                    collisionsSettings._offset = vec3FromVariant(settings["offset"]);
+                }
+                collisionSystem.addCollisionSphere(jointIndex, collisionsSettings);
+            }
+        }
+    }
+}
+
+QVariantMap MyAvatar::getFlowData() {
+    QVariantMap result;
+    if (QThread::currentThread() != thread()) {
+        BLOCKING_INVOKE_METHOD(this, "getFlowData",
+            Q_RETURN_ARG(QVariantMap, result));
+        return result;
+    }
+    if (_skeletonModel->isLoaded()) {
+        auto jointNames = getJointNames();
+        auto &flow = _skeletonModel->getRig().getFlow();
+        auto &collisionSystem = flow.getCollisionSystem();
+        bool initialized = flow.isInitialized();
+        result.insert("initialized", initialized);
+        result.insert("active", flow.getActive());
+        result.insert("colliding", collisionSystem.getActive());
+        QVariantMap physicsData;
+        QVariantMap collisionsData;
+        QVariantMap threadData;
+        std::map<QString, QVariantList> groupJointsMap;
+        QVariantList jointCollisionData;
+        auto &groups = flow.getGroupSettings();
+        for (auto &joint : flow.getJoints()) {
+            auto &groupName = joint.second.getGroup();
+            if (groups.find(groupName) != groups.end()) {
+                if (groupJointsMap.find(groupName) == groupJointsMap.end()) {
+                    groupJointsMap.insert(std::pair<QString, QVariantList>(groupName, QVariantList()));
+                }
+                groupJointsMap[groupName].push_back(joint.second.getIndex());
+            }
+        }        
+        for (auto &group : groups) {
+            QVariantMap settingsObject;
+            QString groupName = group.first;
+            FlowPhysicsSettings groupSettings = group.second;
+            settingsObject.insert("active", groupSettings._active);
+            settingsObject.insert("damping", groupSettings._damping);
+            settingsObject.insert("delta", groupSettings._delta);
+            settingsObject.insert("gravity", groupSettings._gravity);
+            settingsObject.insert("inertia", groupSettings._inertia);
+            settingsObject.insert("radius", groupSettings._radius);
+            settingsObject.insert("stiffness", groupSettings._stiffness);
+            settingsObject.insert("jointIndices", groupJointsMap[groupName]);
+            physicsData.insert(groupName, settingsObject);
+        }
+
+        auto &collisions = collisionSystem.getCollisions();
+        for (auto &collision : collisions) {
+            QVariantMap collisionObject;
+            collisionObject.insert("offset", vec3toVariant(collision._offset));
+            collisionObject.insert("radius", collision._radius);
+            collisionObject.insert("jointIndex", collision._jointIndex);
+            QString jointName = jointNames.size() > collision._jointIndex ? jointNames[collision._jointIndex] : "unknown";
+            collisionsData.insert(jointName, collisionObject);
+        }
+        for (auto &thread : flow.getThreads()) {
+            QVariantList indices;
+            for (int index : thread._joints) {
+                indices.append(index);
+            }
+            threadData.insert(thread._jointsPointer->at(thread._joints[0]).getName(), indices);
+        }
+        result.insert("physics", physicsData);
+        result.insert("collisions", collisionsData);
+        result.insert("threads", threadData);
+    }
+    return result;
+}
+
+QVariantList MyAvatar::getCollidingFlowJoints() {
+    QVariantList result;
+    if (QThread::currentThread() != thread()) {
+        BLOCKING_INVOKE_METHOD(this, "getCollidingFlowJoints",
+            Q_RETURN_ARG(QVariantList, result));
+        return result;
+    }
+
+    if (_skeletonModel->isLoaded()) {
+        auto& flow = _skeletonModel->getRig().getFlow();
+        for (auto &joint : flow.getJoints()) {
+            if (joint.second.isColliding()) {
+                result.append(joint.second.getIndex());
+            }
+        }
+    }
+    return result;
+}
+
+void MyAvatar::initFlowFromFST() {
+    if (_skeletonModel->isLoaded()) {
+        auto &flowData = _skeletonModel->getHFMModel().flowData;
+        if (flowData.shouldInitFlow()) {
+            useFlow(true, flowData.shouldInitCollisions(), flowData._physicsConfig, flowData._collisionsConfig);
+        }
+    }
+}
+
+void MyAvatar::sendPacket(const QUuid& entityID) const {
     auto treeRenderer = DependencyManager::get<EntityTreeRenderer>();
     EntityTreePointer entityTree = treeRenderer ? treeRenderer->getTree() : nullptr;
     if (entityTree) {
         entityTree->withWriteLock([&] {
             // force an update packet
             EntityEditPacketSender* packetSender = qApp->getEntityEditPacketSender();
-            packetSender->queueEditEntityMessage(PacketType::EntityEdit, entityTree, entityID, properties);
+            packetSender->queueEditAvatarEntityMessage(entityTree, entityID);
         });
     }
 }

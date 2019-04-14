@@ -247,7 +247,7 @@ void Model::updateRenderItems() {
                 Transform renderTransform = modelTransform;
 
                 if (useDualQuaternionSkinning) {
-                    if (meshState.clusterDualQuaternions.size() == 1) {
+                    if (meshState.clusterDualQuaternions.size() == 1 || meshState.clusterDualQuaternions.size() == 2) {
                         const auto& dq = meshState.clusterDualQuaternions[0];
                         Transform transform(dq.getRotation(),
                                             dq.getScale(),
@@ -255,7 +255,7 @@ void Model::updateRenderItems() {
                         renderTransform = modelTransform.worldTransform(Transform(transform));
                     }
                 } else {
-                    if (meshState.clusterMatrices.size() == 1) {
+                    if (meshState.clusterMatrices.size() == 1 || meshState.clusterMatrices.size() == 2) {
                         renderTransform = modelTransform.worldTransform(Transform(meshState.clusterMatrices[0]));
                     }
                 }
@@ -756,7 +756,16 @@ scriptable::ScriptableModelBase Model::getScriptableModel() {
 
             int numParts = (int)mesh->getNumParts();
             for (int partIndex = 0; partIndex < numParts; partIndex++) {
-                result.appendMaterial(graphics::MaterialLayer(getGeometry()->getShapeMaterial(shapeID), 0), shapeID, _modelMeshMaterialNames[shapeID]);
+                auto& materialName = _modelMeshMaterialNames[shapeID];
+                result.appendMaterial(graphics::MaterialLayer(getGeometry()->getShapeMaterial(shapeID), 0), shapeID, materialName);
+
+                auto mappedMaterialIter = _materialMapping.find(shapeID);
+                if (mappedMaterialIter != _materialMapping.end()) {
+                    auto mappedMaterials = mappedMaterialIter->second;
+                    for (auto& mappedMaterial : mappedMaterials) {
+                        result.appendMaterial(mappedMaterial, shapeID, materialName);
+                    }
+                }
                 shapeID++;
             }
         }
@@ -956,6 +965,7 @@ bool Model::addToScene(const render::ScenePointer& scene,
     }
 
     if (somethingAdded) {
+        applyMaterialMapping();
         _addedToScene = true;
         updateRenderItems();
         _needsFixupInScene = false;
@@ -973,6 +983,7 @@ void Model::removeFromScene(const render::ScenePointer& scene, render::Transacti
     _modelMeshRenderItems.clear();
     _modelMeshMaterialNames.clear();
     _modelMeshRenderItemShapes.clear();
+    _priorityMap.clear();
 
     _blendshapeOffsets.clear();
     _blendshapeOffsetsInitialized = false;
@@ -1116,10 +1127,6 @@ int Model::getParentJointIndex(int jointIndex) const {
     return (isActive() && jointIndex != -1) ? getHFMModel().joints.at(jointIndex).parentIndex : -1;
 }
 
-int Model::getLastFreeJointIndex(int jointIndex) const {
-    return (isActive() && jointIndex != -1) ? getHFMModel().joints.at(jointIndex).freeLineage.last() : -1;
-}
-
 void Model::setTextures(const QVariantMap& textures) {
     if (isLoaded()) {
         _needsFixupInScene = true;
@@ -1162,6 +1169,7 @@ void Model::setURL(const QUrl& url) {
         resource->setLoadPriority(this, _loadingPriority);
         _renderWatcher.setResource(resource);
     }
+    _rig.initFlow(false);
     onInvalidate();
 }
 
@@ -1523,17 +1531,65 @@ std::set<unsigned int> Model::getMeshIDsFromMaterialID(QString parentMaterialNam
     return toReturn;
 }
 
+void Model::applyMaterialMapping() {
+    auto renderItemsKey = _renderItemKeyGlobalFlags;
+    PrimitiveMode primitiveMode = getPrimitiveMode();
+    bool useDualQuaternionSkinning = _useDualQuaternionSkinning;
+
+    auto& materialMapping = getMaterialMapping();
+    for (auto& mapping : materialMapping) {
+        std::set<unsigned int> shapeIDs = getMeshIDsFromMaterialID(QString(mapping.first.c_str()));
+        auto networkMaterialResource = mapping.second;
+        if (!networkMaterialResource || shapeIDs.size() == 0) {
+            continue;
+        }
+
+        auto materialLoaded = [this, networkMaterialResource, shapeIDs, renderItemsKey, primitiveMode, useDualQuaternionSkinning]() {
+            if (networkMaterialResource->isFailed() || networkMaterialResource->parsedMaterials.names.size() == 0) {
+                return;
+            }
+            render::Transaction transaction;
+            auto networkMaterial = networkMaterialResource->parsedMaterials.networkMaterials[networkMaterialResource->parsedMaterials.names[0]];
+            for (auto shapeID : shapeIDs) {
+                if (shapeID < _modelMeshRenderItemIDs.size()) {
+                    auto itemID = _modelMeshRenderItemIDs[shapeID];
+                    auto meshIndex = _modelMeshRenderItemShapes[shapeID].meshIndex;
+                    bool invalidatePayloadShapeKey = shouldInvalidatePayloadShapeKey(meshIndex);
+                    graphics::MaterialLayer material = graphics::MaterialLayer(networkMaterial, ++_priorityMap[shapeID]);
+                    _materialMapping[shapeID].push_back(material);
+                    transaction.updateItem<ModelMeshPartPayload>(itemID, [material, renderItemsKey,
+                            invalidatePayloadShapeKey, primitiveMode, useDualQuaternionSkinning](ModelMeshPartPayload& data) {
+                        data.addMaterial(material);
+                        // if the material changed, we might need to update our item key or shape key
+                        data.updateKey(renderItemsKey);
+                        data.setShapeKey(invalidatePayloadShapeKey, primitiveMode, useDualQuaternionSkinning);
+                    });
+                }
+            }
+            AbstractViewStateInterface::instance()->getMain3DScene()->enqueueTransaction(transaction);
+        };
+
+        if (networkMaterialResource->isLoaded()) {
+            materialLoaded();
+        } else {
+            connect(networkMaterialResource.data(), &Resource::finished, materialLoaded);
+        }
+    }
+}
+
 void Model::addMaterial(graphics::MaterialLayer material, const std::string& parentMaterialName) {
     std::set<unsigned int> shapeIDs = getMeshIDsFromMaterialID(QString(parentMaterialName.c_str()));
+
+    auto renderItemsKey = _renderItemKeyGlobalFlags;
+    PrimitiveMode primitiveMode = getPrimitiveMode();
+    bool useDualQuaternionSkinning = _useDualQuaternionSkinning;
+
     render::Transaction transaction;
     for (auto shapeID : shapeIDs) {
         if (shapeID < _modelMeshRenderItemIDs.size()) {
             auto itemID = _modelMeshRenderItemIDs[shapeID];
-            auto renderItemsKey = _renderItemKeyGlobalFlags;
-            PrimitiveMode primitiveMode = getPrimitiveMode();
             auto meshIndex = _modelMeshRenderItemShapes[shapeID].meshIndex;
             bool invalidatePayloadShapeKey = shouldInvalidatePayloadShapeKey(meshIndex);
-            bool useDualQuaternionSkinning = _useDualQuaternionSkinning;
             transaction.updateItem<ModelMeshPartPayload>(itemID, [material, renderItemsKey,
                 invalidatePayloadShapeKey, primitiveMode, useDualQuaternionSkinning](ModelMeshPartPayload& data) {
                 data.addMaterial(material);
@@ -1594,9 +1650,9 @@ void packBlendshapeOffsetTo_Pos_F32_3xSN10_Nor_3xSN10_Tan_3xSN10(glm::uvec4& pac
 
     packed = glm::uvec4(
         glm::floatBitsToUint(len),
-        glm::packSnorm3x10_1x2(glm::vec4(normalizedPos, 0.0f)),
-        glm::packSnorm3x10_1x2(glm::vec4(unpacked.normalOffset, 0.0f)),
-        glm::packSnorm3x10_1x2(glm::vec4(unpacked.tangentOffset, 0.0f))
+        glm_packSnorm3x10_1x2(glm::vec4(normalizedPos, 0.0f)),
+        glm_packSnorm3x10_1x2(glm::vec4(unpacked.normalOffset, 0.0f)),
+        glm_packSnorm3x10_1x2(glm::vec4(unpacked.tangentOffset, 0.0f))
     );
 }
 

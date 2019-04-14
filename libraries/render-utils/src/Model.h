@@ -183,6 +183,7 @@ public:
     /// Provided as a convenience, will crash if !isLoaded()
     // And so that getHFMModel() isn't chained everywhere
     const HFMModel& getHFMModel() const { assert(isLoaded()); return _renderGeometry->getHFMModel(); }
+    const MaterialMapping& getMaterialMapping() const { assert(isLoaded()); return _renderGeometry->getMaterialMapping(); }
 
     bool isActive() const { return isLoaded(); }
 
@@ -373,14 +374,15 @@ signals:
 
 protected:
 
+    std::unordered_map<unsigned int, quint16> _priorityMap; // only used for materialMapping
+    std::unordered_map<unsigned int, std::vector<graphics::MaterialLayer>> _materialMapping; // generated during applyMaterialMapping
+    void applyMaterialMapping();
+
     void setBlendshapeCoefficients(const QVector<float>& coefficients) { _blendshapeCoefficients = coefficients; }
     const QVector<float>& getBlendshapeCoefficients() const { return _blendshapeCoefficients; }
 
     /// Clear the joint states
     void clearJointState(int index);
-
-    /// Returns the index of the last free ancestor of the indexed joint, or -1 if not found.
-    int getLastFreeJointIndex(int jointIndex) const;
 
     /// \param jointIndex index of joint in model structure
     /// \param position[out] position of joint in model-frame

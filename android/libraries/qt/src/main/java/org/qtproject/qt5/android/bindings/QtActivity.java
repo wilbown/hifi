@@ -70,9 +70,7 @@ public class QtActivity extends Activity {
     public final String QT_ANDROID_DEFAULT_THEME = QT_ANDROID_THEMES[0]; // sets the default theme.
     private QtActivityLoader m_loader = new QtActivityLoader(this);
 
-    public boolean isLoading;
-    public boolean keepInterfaceRunning;
-
+    public boolean isPausing=false;
     public QtActivity() {
     }
 
@@ -229,10 +227,13 @@ public class QtActivity extends Activity {
     //---------------------------------------------------------------------------
 
     protected void onCreateHook(Bundle savedInstanceState) {
+
         m_loader.APPLICATION_PARAMETERS = APPLICATION_PARAMETERS;
         m_loader.ENVIRONMENT_VARIABLES = ENVIRONMENT_VARIABLES;
         m_loader.QT_ANDROID_THEMES = QT_ANDROID_THEMES;
         m_loader.QT_ANDROID_DEFAULT_THEME = QT_ANDROID_DEFAULT_THEME;
+
+
         m_loader.onCreate(savedInstanceState);
     }
 
@@ -364,24 +365,9 @@ public class QtActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        /*
-        cduarte https://highfidelity.manuscript.com/f/cases/16712/App-freezes-on-opening-randomly
-        After Qt upgrade to 5.11 we had a black screen crash after closing the application with
-        the hardware button "Back" and trying to start the app again. It could only be fixed after
-        totally closing the app swiping it in the list of running apps.
-        This problem did not happen with the previous Qt version.
-        After analysing changes we came up with this case and change:
-            https://codereview.qt-project.org/#/c/218882/
-        In summary they've moved libs loading to the same thread as main() and as a matter of correctness
-        in the onDestroy method in QtActivityDelegate, they exit that thread with `QtNative.m_qtThread.exit();`
-        That exit call is the main reason of this problem.
 
-        In this fix we just replace the `QtApplication.invokeDelegate();` call that may end using the
-        entire onDestroy method including that thread exit line for other three lines that purposely
-        terminate qt (borrowed from QtActivityDelegate::onDestroy as well).
-         */
         QtNative.terminateQt();
-        QtNative.setActivity(null, null);
+        QtNative.setActivity(null,null);
         System.exit(0);
     }
     //---------------------------------------------------------------------------
@@ -524,9 +510,9 @@ public class QtActivity extends Activity {
         super.onPause();
         // GC: this trick allow us to show a splash activity until Qt app finishes
         // loading
-        if (!isLoading && !keepInterfaceRunning) {
-            QtApplication.invokeDelegate();
-        }
+        //QtApplication.invokeDelegate();
+
+        //TODO(Amer): looking into why this messes up pause.
     }
     //---------------------------------------------------------------------------
 
@@ -665,10 +651,12 @@ public class QtActivity extends Activity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (!keepInterfaceRunning) {
+
+        if(!isPausing){
             QtApplication.invokeDelegate();
         }
     }
+
 
     //---------------------------------------------------------------------------
 

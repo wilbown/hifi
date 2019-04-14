@@ -9,6 +9,7 @@
 //  See the accompanying file LICENSE or http://www.apache.org/licenses/LICENSE-2.0.html
 //
 
+
 #include "Application.h"
 
 #include <chrono>
@@ -37,7 +38,6 @@
 
 #include <QtNetwork/QLocalSocket>
 #include <QtNetwork/QLocalServer>
-
 #include <QtQml/QQmlContext>
 #include <QtQml/QQmlEngine>
 #include <QtQuick/QQuickWindow>
@@ -50,6 +50,7 @@
 #include <QFontDatabase>
 #include <QProcessEnvironment>
 #include <QTemporaryDir>
+
 
 #include <gl/QOpenGLContextWrapper.h>
 #include <gl/GLWindow.h>
@@ -102,7 +103,7 @@
 #include <MessagesClient.h>
 #include <hfm/ModelFormatRegistry.h>
 #include <model-networking/ModelCacheScriptingInterface.h>
-#include <model-networking/TextureCacheScriptingInterface.h>
+#include <material-networking/TextureCacheScriptingInterface.h>
 #include <ModelEntityItem.h>
 #include <NetworkAccessManager.h>
 #include <NetworkingConstants.h>
@@ -152,8 +153,9 @@
 #include <trackers/EyeTracker.h>
 #include <avatars-renderer/ScriptAvatar.h>
 #include <RenderableEntityItem.h>
+#include <RenderableTextEntityItem.h>
 #include <RenderableWebEntityItem.h>
-#include <model-networking/MaterialCache.h>
+#include <material-networking/MaterialCache.h>
 #include "recording/ClipCache.h"
 
 #include "AudioClient.h"
@@ -190,6 +192,9 @@
 #include "scripting/WalletScriptingInterface.h"
 #include "scripting/TTSScriptingInterface.h"
 #include "scripting/KeyboardScriptingInterface.h"
+
+
+
 #if defined(Q_OS_MAC) || defined(Q_OS_WIN)
 #include "SpeechRecognizer.h"
 #endif
@@ -198,15 +203,12 @@
 #include "ui/AvatarInputs.h"
 #include "ui/DialogsManager.h"
 #include "ui/LoginDialog.h"
-#include "ui/overlays/Cube3DOverlay.h"
-#include "ui/overlays/Web3DOverlay.h"
 #include "ui/Snapshot.h"
 #include "ui/SnapshotAnimated.h"
 #include "ui/StandAloneJSConsole.h"
 #include "ui/Stats.h"
 #include "ui/AnimStats.h"
 #include "ui/UpdateDialog.h"
-#include "ui/overlays/Overlays.h"
 #include "ui/DomainConnectionModel.h"
 #include "ui/Keyboard.h"
 #include "Util.h"
@@ -235,12 +237,16 @@
 #include "commerce/Ledger.h"
 #include "commerce/Wallet.h"
 #include "commerce/QmlCommerce.h"
+#include "commerce/QmlMarketplace.h"
 #include "ResourceRequestObserver.h"
 
 #include "webbrowser/WebBrowserSuggestionsEngine.h"
 #include <DesktopPreviewProvider.h>
 
+
 #include "AboutUtil.h"
+
+#include <DisableDeferred.h>
 
 #if defined(Q_OS_WIN)
 #include <VersionHelpers.h>
@@ -283,13 +289,6 @@ static bool DISABLE_WATCHDOG = true;
 #else
 static const QString DISABLE_WATCHDOG_FLAG{ "HIFI_DISABLE_WATCHDOG" };
 static bool DISABLE_WATCHDOG = nsightActive() || QProcessEnvironment::systemEnvironment().contains(DISABLE_WATCHDOG_FLAG);
-#endif
-
-#if defined(USE_GLES)
-static bool DISABLE_DEFERRED = true;
-#else
-static const QString RENDER_FORWARD{ "HIFI_RENDER_FORWARD" };
-static bool DISABLE_DEFERRED = QProcessEnvironment::systemEnvironment().contains(RENDER_FORWARD);
 #endif
 
 #if !defined(Q_OS_ANDROID)
@@ -349,6 +348,8 @@ static const QString DESKTOP_DISPLAY_PLUGIN_NAME = "Desktop";
 static const QString ACTIVE_DISPLAY_PLUGIN_SETTING_NAME = "activeDisplayPlugin";
 static const QString SYSTEM_TABLET = "com.highfidelity.interface.tablet.system";
 static const QString KEEP_ME_LOGGED_IN_SETTING_NAME = "keepMeLoggedIn";
+
+static const float FOCUS_HIGHLIGHT_EXPANSION_FACTOR = 1.05f;
 
 #if defined(Q_OS_ANDROID)
 static const QString TESTER_FILE = "/sdcard/_hifi_test_device.txt";
@@ -602,8 +603,9 @@ void messageHandler(QtMsgType type, const QMessageLogContext& context, const QSt
                 __android_log_write(ANDROID_LOG_FATAL,"Interface",local);
                 abort();
         }
-#endif
+#else
         qApp->getLogger()->addMessage(qPrintable(logMessage));
+#endif
     }
 }
 
@@ -620,8 +622,6 @@ public:
             switch (type) {
             case NestableType::Entity:
                 return getEntityModelProvider(static_cast<EntityItemID>(uuid));
-            case NestableType::Overlay:
-                return getOverlayModelProvider(static_cast<OverlayID>(uuid));
             case NestableType::Avatar:
                 return getAvatarModelProvider(uuid);
             }
@@ -641,22 +641,6 @@ private:
             } else {
                 qCWarning(interfaceapp) << "no renderer for entity ID" << entityID.toString();
             }
-        }
-        return provider;
-    }
-
-    scriptable::ModelProviderPointer getOverlayModelProvider(OverlayID overlayID) {
-        scriptable::ModelProviderPointer provider;
-        auto &overlays = qApp->getOverlays();
-        if (auto overlay = overlays.getOverlay(overlayID)) {
-            if (auto base3d = std::dynamic_pointer_cast<Base3DOverlay>(overlay)) {
-                provider = std::dynamic_pointer_cast<scriptable::ModelProvider>(base3d);
-                provider->modelProviderType = NestableType::Overlay;
-            } else {
-                qCWarning(interfaceapp) << "no renderer for overlay ID" << overlayID.toString();
-            }
-        } else {
-            qCWarning(interfaceapp) << "overlay not found" << overlayID.toString();
         }
         return provider;
     }
@@ -765,6 +749,11 @@ bool setupEssentials(int& argc, char** argv, bool runningMarkerExisted) {
     static const auto OCULUS_STORE_ARG = "--oculus-store";
     bool isStore = cmdOptionExists(argc, const_cast<const char**>(argv), OCULUS_STORE_ARG);
     qApp->setProperty(hifi::properties::OCULUS_STORE, isStore);
+
+    // emulate standalone device
+    static const auto STANDALONE_ARG = "--standalone";
+    bool isStandalone = cmdOptionExists(argc, const_cast<const char**>(argv), STANDALONE_ARG);
+    qApp->setProperty(hifi::properties::STANDALONE, isStandalone);
 
     // Ignore any previous crashes if running from command line with a test script.
     bool inTestMode { false };
@@ -945,9 +934,7 @@ bool setupEssentials(int& argc, char** argv, bool runningMarkerExisted) {
 // FIXME move to header, or better yet, design some kind of UI manager
 // to take care of highlighting keyboard focused items, rather than
 // continuing to overburden Application.cpp
-std::shared_ptr<Cube3DOverlay> _keyboardFocusHighlight{ nullptr };
-OverlayID _keyboardFocusHighlightID{ UNKNOWN_OVERLAY_ID };
-
+QUuid _keyboardFocusHighlightID;
 
 OffscreenGLCanvas* _qmlShareContext { nullptr };
 
@@ -988,7 +975,9 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     QApplication(argc, argv),
     _window(new MainWindow(desktop())),
     _sessionRunTimer(startupTimer),
+#ifndef Q_OS_ANDROID
     _logger(new FileLogger(this)),
+#endif
     _previousSessionCrashed(setupEssentials(argc, argv, runningMarkerExisted)),
     _entitySimulation(new PhysicalEntitySimulation()),
     _physicsEngine(new PhysicsEngine(Vectors::ZERO)),
@@ -1072,6 +1061,10 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     connect(PluginManager::getInstance().data(), &PluginManager::inputDeviceRunningChanged,
         controllerScriptingInterface, &controller::ScriptingInterface::updateRunningInputDevices);
 
+    EntityTree::setEntityClicksCapturedOperator([this] {
+        return _controllerScriptingInterface->areEntityClicksCaptured();
+    });
+
     _entityClipboard->createRootElement();
 
 #ifdef Q_OS_WIN
@@ -1086,6 +1079,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/FiraSans-SemiBold.ttf");
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/Raleway-Light.ttf");
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/Raleway-Regular.ttf");
+    QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/rawline-500.ttf");
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/Raleway-Bold.ttf");
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/Raleway-SemiBold.ttf");
     QFontDatabase::addApplicationFont(PathUtils::resourcesPath() + "fonts/Cairo-SemiBold.ttf");
@@ -1122,7 +1116,9 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     }
     auto accountManager = DependencyManager::get<AccountManager>();
 
+#ifndef Q_OS_ANDROID
     _logger->setSessionID(accountManager->getSessionID());
+#endif
 
     setCrashAnnotation("metaverse_session_id", accountManager->getSessionID().toString().toStdString());
     setCrashAnnotation("main_thread_id", std::to_string((size_t)QThread::currentThreadId()));
@@ -1214,9 +1210,10 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         if (tabletScriptingInterface) {
             tabletScriptingInterface->setQmlTabletRoot(SYSTEM_TABLET, nullptr);
         }
-        getOverlays().deleteOverlay(getTabletScreenID());
-        getOverlays().deleteOverlay(getTabletHomeButtonID());
-        getOverlays().deleteOverlay(getTabletFrameID());
+        auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+        entityScriptingInterface->deleteEntity(getTabletScreenID());
+        entityScriptingInterface->deleteEntity(getTabletHomeButtonID());
+        entityScriptingInterface->deleteEntity(getTabletFrameID());
         _failedToConnectToEntityServer = false;
     });
 
@@ -1306,10 +1303,10 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
             if (isHMDMode()) {
                 emit loginDialogFocusDisabled();
                 dialogsManager->hideLoginDialog();
-                createLoginDialogOverlay();
+                createLoginDialog();
             } else {
-                getOverlays().deleteOverlay(_loginDialogOverlayID);
-                _loginDialogOverlayID = OverlayID();
+                DependencyManager::get<EntityScriptingInterface>()->deleteEntity(_loginDialogID);
+                _loginDialogID = QUuid();
                 _loginStateManager.tearDown();
                 dialogsManager->showLoginDialog();
                 emit loginDialogFocusEnabled();
@@ -1602,12 +1599,21 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     connect(userInputMapper.data(), &UserInputMapper::actionEvent, [this](int action, float state) {
         using namespace controller;
         auto tabletScriptingInterface = DependencyManager::get<TabletScriptingInterface>();
+        auto audioScriptingInterface = reinterpret_cast<scripting::Audio*>(DependencyManager::get<AudioScriptingInterface>().data());
         {
             auto actionEnum = static_cast<Action>(action);
             int key = Qt::Key_unknown;
             static int lastKey = Qt::Key_unknown;
             bool navAxis = false;
             switch (actionEnum) {
+                case Action::TOGGLE_PUSHTOTALK:
+                    if (state > 0.0f) {
+                        audioScriptingInterface->setPushingToTalk(true);
+                    } else if (state <= 0.0f) {
+                        audioScriptingInterface->setPushingToTalk(false);
+                    }
+                    break;
+
                 case Action::UI_NAV_VERTICAL:
                     navAxis = true;
                     if (state > 0.0f) {
@@ -1758,11 +1764,12 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     });
     _applicationStateDevice->setInputVariant(STATE_PLATFORM_ANDROID, []() -> float {
 #if defined(Q_OS_ANDROID)
-        return 1;
+        return 1 ;
 #else
         return 0;
 #endif
     });
+
 
     // Setup the _keyboardMouseDevice, _touchscreenDevice, _touchscreenVirtualPadDevice and the user input mapper with the default bindings
     userInputMapper->registerDevice(_keyboardMouseDevice->getInputDevice());
@@ -1861,6 +1868,8 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
 
     this->installEventFilter(this);
 
+
+
 #ifdef HAVE_DDE
     auto ddeTracker = DependencyManager::get<DdeFaceTracker>();
     ddeTracker->init();
@@ -1900,66 +1909,56 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     SpacemouseManager::getInstance().init();
 #endif
 
-    // If the user clicks an an entity, we will check that it's an unlocked web entity, and if so, set the focus to it
-    auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
-    connect(entityScriptingInterface.data(), &EntityScriptingInterface::mousePressOnEntity,
-            [this](const EntityItemID& entityItemID, const PointerEvent& event) {
+    // If the user clicks on an object, we will check that it's a web surface, and if so, set the focus to it
+    auto pointerManager = DependencyManager::get<PointerManager>();
+    auto keyboardFocusOperator = [this](const QUuid& id, const PointerEvent& event) {
         if (event.shouldFocus()) {
-            if (getEntities()->wantsKeyboardFocus(entityItemID)) {
-                setKeyboardFocusOverlay(UNKNOWN_OVERLAY_ID);
-                setKeyboardFocusEntity(entityItemID);
-            } else {
+            auto keyboard = DependencyManager::get<Keyboard>();
+            if (getEntities()->wantsKeyboardFocus(id)) {
+                setKeyboardFocusEntity(id);
+            } else if (!keyboard->containsID(id)) { // FIXME: this is a hack to make the keyboard work for now, since the keys would otherwise steal focus
                 setKeyboardFocusEntity(UNKNOWN_ENTITY_ID);
             }
         }
-    });
+    };
+    connect(pointerManager.data(), &PointerManager::triggerBeginEntity, keyboardFocusOperator);
+    connect(pointerManager.data(), &PointerManager::triggerBeginOverlay, keyboardFocusOperator);
 
-    connect(entityScriptingInterface.data(), &EntityScriptingInterface::deletingEntity, [this](const EntityItemID& entityItemID) {
+    auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+    connect(entityScriptingInterface.data(), &EntityScriptingInterface::deletingEntity, this, [this](const EntityItemID& entityItemID) {
         if (entityItemID == _keyboardFocusedEntity.get()) {
             setKeyboardFocusEntity(UNKNOWN_ENTITY_ID);
         }
-    });
+    }, Qt::QueuedConnection);
 
-    EntityTree::setAddMaterialToEntityOperator([this](const QUuid& entityID, graphics::MaterialLayer material, const std::string& parentMaterialName) {
+    EntityTreeRenderer::setAddMaterialToEntityOperator([this](const QUuid& entityID, graphics::MaterialLayer material, const std::string& parentMaterialName) {
         if (_aboutToQuit) {
             return false;
         }
 
-        // try to find the renderable
         auto renderable = getEntities()->renderableForEntityId(entityID);
         if (renderable) {
             renderable->addMaterial(material, parentMaterialName);
-        }
-
-        // even if we don't find it, try to find the entity
-        auto entity = getEntities()->getEntity(entityID);
-        if (entity) {
-            entity->addMaterial(material, parentMaterialName);
             return true;
         }
+
         return false;
     });
-    EntityTree::setRemoveMaterialFromEntityOperator([this](const QUuid& entityID, graphics::MaterialPointer material, const std::string& parentMaterialName) {
+    EntityTreeRenderer::setRemoveMaterialFromEntityOperator([this](const QUuid& entityID, graphics::MaterialPointer material, const std::string& parentMaterialName) {
         if (_aboutToQuit) {
             return false;
         }
 
-        // try to find the renderable
         auto renderable = getEntities()->renderableForEntityId(entityID);
         if (renderable) {
             renderable->removeMaterial(material, parentMaterialName);
-        }
-
-        // even if we don't find it, try to find the entity
-        auto entity = getEntities()->getEntity(entityID);
-        if (entity) {
-            entity->removeMaterial(material, parentMaterialName);
             return true;
         }
+
         return false;
     });
 
-    EntityTree::setAddMaterialToAvatarOperator([](const QUuid& avatarID, graphics::MaterialLayer material, const std::string& parentMaterialName) {
+    EntityTreeRenderer::setAddMaterialToAvatarOperator([](const QUuid& avatarID, graphics::MaterialLayer material, const std::string& parentMaterialName) {
         auto avatarManager = DependencyManager::get<AvatarManager>();
         auto avatar = avatarManager->getAvatarBySessionID(avatarID);
         if (avatar) {
@@ -1968,7 +1967,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         }
         return false;
     });
-    EntityTree::setRemoveMaterialFromAvatarOperator([](const QUuid& avatarID, graphics::MaterialPointer material, const std::string& parentMaterialName) {
+    EntityTreeRenderer::setRemoveMaterialFromAvatarOperator([](const QUuid& avatarID, graphics::MaterialPointer material, const std::string& parentMaterialName) {
         auto avatarManager = DependencyManager::get<AvatarManager>();
         auto avatar = avatarManager->getAvatarBySessionID(avatarID);
         if (avatar) {
@@ -1978,33 +1977,25 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         return false;
     });
 
-    EntityTree::setAddMaterialToOverlayOperator([this](const QUuid& overlayID, graphics::MaterialLayer material, const std::string& parentMaterialName) {
-        auto overlay = _overlays.getOverlay(overlayID);
-        if (overlay) {
-            overlay->addMaterial(material, parentMaterialName);
-            return true;
+    EntityTree::setGetEntityObjectOperator([this](const QUuid& id) -> QObject* {
+        auto entities = getEntities();
+        if (auto entity = entities->renderableForEntityId(id)) {
+            return qobject_cast<QObject*>(entity.get());
         }
-        return false;
-    });
-    EntityTree::setRemoveMaterialFromOverlayOperator([this](const QUuid& overlayID, graphics::MaterialPointer material, const std::string& parentMaterialName) {
-        auto overlay = _overlays.getOverlay(overlayID);
-        if (overlay) {
-            overlay->removeMaterial(material, parentMaterialName);
-            return true;
-        }
-        return false;
+        return nullptr;
     });
 
-    // Keyboard focus handling for Web overlays.
-    auto overlays = &(qApp->getOverlays());
-    connect(overlays, &Overlays::overlayDeleted, [this](const OverlayID& overlayID) {
-        if (overlayID == _keyboardFocusedOverlay.get()) {
-            setKeyboardFocusOverlay(UNKNOWN_OVERLAY_ID);
+    EntityTree::setTextSizeOperator([this](const QUuid& id, const QString& text) {
+        auto entities = getEntities();
+        if (auto entity = entities->renderableForEntityId(id)) {
+            if (auto renderable = std::dynamic_pointer_cast<render::entities::TextEntityRenderer>(entity)) {
+                return renderable->textSize(text);
+            }
         }
+        return QSizeF(0.0f, 0.0f);
     });
 
     connect(this, &Application::aboutToQuit, [this]() {
-        setKeyboardFocusOverlay(UNKNOWN_OVERLAY_ID);
         setKeyboardFocusEntity(UNKNOWN_ENTITY_ID);
     });
 
@@ -2299,7 +2290,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
 
     // Setup the mouse ray pick and related operators
     {
-        auto mouseRayPick = std::make_shared<RayPick>(Vectors::ZERO, Vectors::UP, PickFilter(PickScriptingInterface::PICK_ENTITIES()), 0.0f, true);
+        auto mouseRayPick = std::make_shared<RayPick>(Vectors::ZERO, Vectors::UP, PickFilter(PickScriptingInterface::PICK_ENTITIES() | PickScriptingInterface::PICK_LOCAL_ENTITIES()), 0.0f, true);
         mouseRayPick->parentTransform = std::make_shared<MouseTransformNode>();
         mouseRayPick->setJointState(PickQuery::JOINT_STATE_MOUSE);
         auto mouseRayPickID = DependencyManager::get<PickManager>()->addPick(PickQuery::Ray, mouseRayPick);
@@ -2325,9 +2316,33 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
         DependencyManager::get<PickManager>()->setPrecisionPicking(rayPickID, value);
     });
 
-    EntityTreeRenderer::setGetAvatarUpOperator([] {
-        return DependencyManager::get<AvatarManager>()->getMyAvatar()->getWorldOrientation() * Vectors::UP;
+    EntityItem::setBillboardRotationOperator([this](const glm::vec3& position, const glm::quat& rotation, BillboardMode billboardMode, const glm::vec3& frustumPos) {
+        if (billboardMode == BillboardMode::YAW) {
+            //rotate about vertical to face the camera
+            glm::vec3 dPosition = frustumPos - position;
+            // If x and z are 0, atan(x, z) is undefined, so default to 0 degrees
+            float yawRotation = dPosition.x == 0.0f && dPosition.z == 0.0f ? 0.0f : glm::atan(dPosition.x, dPosition.z);
+            return glm::quat(glm::vec3(0.0f, yawRotation, 0.0f));
+        } else if (billboardMode == BillboardMode::FULL) {
+            // use the referencial from the avatar, y isn't always up
+            glm::vec3 avatarUP = DependencyManager::get<AvatarManager>()->getMyAvatar()->getWorldOrientation() * Vectors::UP;
+            // check to see if glm::lookAt will work / using glm::lookAt variable name
+            glm::highp_vec3 s(glm::cross(position - frustumPos, avatarUP));
+
+            // make sure s is not NaN for any component
+            if (glm::length2(s) > 0.0f) {
+                return glm::conjugate(glm::toQuat(glm::lookAt(frustumPos, position, avatarUP)));
+            }
+        }
+        return rotation;
     });
+    EntityItem::setPrimaryViewFrustumPositionOperator([this]() {
+        ViewFrustum viewFrustum;
+        copyViewFrustum(viewFrustum);
+        return viewFrustum.getPosition();
+    });
+
+    DependencyManager::get<UsersScriptingInterface>()->setKickConfirmationOperator([this] (const QUuid& nodeID) { userKickConfirmation(nodeID); });
 
     render::entities::WebEntityRenderer::setAcquireWebSurfaceOperator([this](const QString& url, bool htmlContent, QSharedPointer<OffscreenQmlSurface>& webSurface, bool& cachedWebSurface) {
         bool isTablet = url == TabletScriptingInterface::QML;
@@ -2342,6 +2357,8 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
             } else {
                 QObject::connect(webSurface.data(), &hifi::qml::OffscreenSurface::rootContextCreated, rootItemLoadedFunctor);
             }
+            auto surfaceContext = webSurface->getSurfaceContext();
+            surfaceContext->setContextProperty("KeyboardScriptingInterface", DependencyManager::get<KeyboardScriptingInterface>().data());
         } else {
             // FIXME: the tablet should use the OffscreenQmlSurfaceCache
             webSurface = QSharedPointer<OffscreenQmlSurface>(new OffscreenQmlSurface(), [](OffscreenQmlSurface* webSurface) {
@@ -2352,7 +2369,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
                 });
             });
             auto rootItemLoadedFunctor = [webSurface, url, isTablet] {
-                Application::setupQmlSurface(webSurface->getSurfaceContext(), isTablet || url == OVERLAY_LOGIN_DIALOG.toString());
+                Application::setupQmlSurface(webSurface->getSurfaceContext(), isTablet || url == LOGIN_DIALOG.toString());
             };
             if (webSurface->getRootItem()) {
                 rootItemLoadedFunctor();
@@ -2371,7 +2388,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
 
         // Fix for crash in QtWebEngineCore when rapidly switching domains
         // Call stop on the QWebEngineView before destroying OffscreenQMLSurface.
-        if (rootItem) {
+        if (rootItem && !cachedWebSurface) {
             // stop loading
             QMetaObject::invokeMethod(rootItem, "stop");
         }
@@ -2400,6 +2417,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     });
 
     // Preload Tablet sounds
+    DependencyManager::get<EntityScriptingInterface>()->setEntityTree(qApp->getEntities()->getTree());
     DependencyManager::get<TabletScriptingInterface>()->preloadSounds();
     DependencyManager::get<Keyboard>()->createKeyboard();
 
@@ -2412,6 +2430,7 @@ Application::Application(int& argc, char** argv, QElapsedTimer& startupTimer, bo
     connect(&AndroidHelper::instance(), &AndroidHelper::beforeEnterBackground, this, &Application::beforeEnterBackground);
     connect(&AndroidHelper::instance(), &AndroidHelper::enterBackground, this, &Application::enterBackground);
     connect(&AndroidHelper::instance(), &AndroidHelper::enterForeground, this, &Application::enterForeground);
+    connect(&AndroidHelper::instance(), &AndroidHelper::toggleAwayMode, this, &Application::toggleAwayMode);
     AndroidHelper::instance().notifyLoadComplete();
 #endif
     pauseUntilLoginDetermined();
@@ -2607,11 +2626,10 @@ void Application::cleanupBeforeQuit() {
     _applicationStateDevice.reset();
 
     {
-        if (_keyboardFocusHighlightID != UNKNOWN_OVERLAY_ID) {
-            getOverlays().deleteOverlay(_keyboardFocusHighlightID);
-            _keyboardFocusHighlightID = UNKNOWN_OVERLAY_ID;
+        if (_keyboardFocusHighlightID != UNKNOWN_ENTITY_ID) {
+            DependencyManager::get<EntityScriptingInterface>()->deleteEntity(_keyboardFocusHighlightID);
+            _keyboardFocusHighlightID = UNKNOWN_ENTITY_ID;
         }
-        _keyboardFocusHighlight = nullptr;
     }
 
     {
@@ -2859,11 +2877,19 @@ void Application::initializeGL() {
     }
 
 #if !defined(DISABLE_QML)
+    QStringList chromiumFlags;
+    // Bug 21993: disable microphone and camera input 
+    chromiumFlags << "--use-fake-device-for-media-stream";
     // Disable signed distance field font rendering on ATI/AMD GPUs, due to
     // https://highfidelity.manuscript.com/f/cases/13677/Text-showing-up-white-on-Marketplace-app
     std::string vendor{ (const char*)glGetString(GL_VENDOR) };
     if ((vendor.find("AMD") != std::string::npos) || (vendor.find("ATI") != std::string::npos)) {
-        qputenv("QTWEBENGINE_CHROMIUM_FLAGS", QByteArray("--disable-distance-field-text"));
+        chromiumFlags << "--disable-distance-field-text";
+    }
+
+    // Ensure all Qt webengine processes launched from us have the appropriate command line flags
+    if (!chromiumFlags.empty()) {
+        qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags.join(' ').toLocal8Bit());
     }
 #endif
 
@@ -3008,7 +3034,27 @@ void Application::initializeUi() {
         QUrl{ "hifi/dialogs/security/SecurityImageModel.qml" },
         QUrl{ "hifi/dialogs/security/SecurityImageSelection.qml" },
         QUrl{ "hifi/tablet/TabletMenu.qml" },
+        QUrl{ "hifi/commerce/marketplace/Marketplace.qml" },
     }, commerceCallback);
+
+    QmlContextCallback marketplaceCallback = [](QQmlContext* context) {
+        context->setContextProperty("MarketplaceScriptingInterface", new QmlMarketplace());
+    };
+    OffscreenQmlSurface::addWhitelistContextHandler({
+        QUrl{ "hifi/commerce/marketplace/Marketplace.qml" },
+        }, marketplaceCallback);
+
+    QmlContextCallback platformInfoCallback = [](QQmlContext* context) {
+        context->setContextProperty("PlatformInfo", new PlatformInfoScriptingInterface());
+    };
+    OffscreenQmlSurface::addWhitelistContextHandler({
+        QUrl{ "hifi/commerce/marketplace/Marketplace.qml" },
+        QUrl{ "hifi/commerce/purchases/Purchases.qml" },
+        QUrl{ "hifi/commerce/wallet/Wallet.qml" },
+        QUrl{ "hifi/commerce/wallet/WalletHome.qml" },
+        QUrl{ "hifi/tablet/TabletAddressDialog.qml" },
+        }, platformInfoCallback);
+
     QmlContextCallback ttsCallback = [](QQmlContext* context) {
         context->setContextProperty("TextToSpeech", DependencyManager::get<TTSScriptingInterface>().data());
     };
@@ -3078,7 +3124,7 @@ void Application::initializeUi() {
         }
         if (TouchscreenVirtualPadDevice::NAME == inputPlugin->getName()) {
             _touchscreenVirtualPadDevice = std::dynamic_pointer_cast<TouchscreenVirtualPadDevice>(inputPlugin);
-#if defined(Q_OS_ANDROID)
+#if defined(ANDROID_APP_INTERFACE)
             auto& virtualPadManager = VirtualPad::Manager::instance();
             connect(&virtualPadManager, &VirtualPad::Manager::hapticFeedbackRequested,
                     this, [](int duration) {
@@ -3099,7 +3145,7 @@ void Application::initializeUi() {
     });
 
 #if !defined(DISABLE_QML)
-    // Pre-create a couple of Web3D overlays to speed up tablet UI
+    // Pre-create a couple of offscreen surfaces to speed up tablet UI
     auto offscreenSurfaceCache = DependencyManager::get<OffscreenQmlSurfaceCache>();
     offscreenSurfaceCache->setOnRootContextCreated([&](const QString& rootObject, QQmlContext* surfaceContext) {
         if (rootObject == TabletScriptingInterface::QML) {
@@ -3251,6 +3297,40 @@ void Application::onDesktopRootItemCreated(QQuickItem* rootItem) {
 #endif
 }
 
+void Application::userKickConfirmation(const QUuid& nodeID) {
+    auto avatarHashMap = DependencyManager::get<AvatarHashMap>();
+    auto avatar = avatarHashMap->getAvatarBySessionID(nodeID);
+
+    QString userName;
+
+    if (avatar) {
+        userName = avatar->getSessionDisplayName();
+    } else {
+        userName = nodeID.toString();
+    }
+
+    QString kickMessage = "Do you wish to kick " + userName + " from your domain";
+    ModalDialogListener* dlg = OffscreenUi::asyncQuestion("Kick User", kickMessage,
+                                                          QMessageBox::Yes | QMessageBox::No);
+
+    if (dlg->getDialogItem()) {
+
+        QObject::connect(dlg, &ModalDialogListener::response, this, [=] (QVariant answer) {
+            QObject::disconnect(dlg, &ModalDialogListener::response, this, nullptr);
+
+            bool yes = (static_cast<QMessageBox::StandardButton>(answer.toInt()) == QMessageBox::Yes);
+            // ask the NodeList to kick the user with the given session ID
+
+            if (yes) {
+                DependencyManager::get<NodeList>()->kickNodeBySessionID(nodeID);
+            }
+
+            DependencyManager::get<UsersScriptingInterface>()->setWaitForKickResponse(false);
+        });
+        DependencyManager::get<UsersScriptingInterface>()->setWaitForKickResponse(true);
+    }
+}
+
 void Application::setupQmlSurface(QQmlContext* surfaceContext, bool setAdditionalContextProperties) {
     surfaceContext->setContextProperty("Users", DependencyManager::get<UsersScriptingInterface>().data());
     surfaceContext->setContextProperty("HMD", DependencyManager::get<HMDScriptingInterface>().data());
@@ -3261,6 +3341,7 @@ void Application::setupQmlSurface(QQmlContext* surfaceContext, bool setAdditiona
     surfaceContext->setContextProperty("MyAvatar", DependencyManager::get<AvatarManager>()->getMyAvatar().get());
     surfaceContext->setContextProperty("Entities", DependencyManager::get<EntityScriptingInterface>().data());
     surfaceContext->setContextProperty("Snapshot", DependencyManager::get<Snapshot>().data());
+    surfaceContext->setContextProperty("KeyboardScriptingInterface", DependencyManager::get<KeyboardScriptingInterface>().data());
 
     if (setAdditionalContextProperties) {
         auto tabletScriptingInterface = DependencyManager::get<TabletScriptingInterface>();
@@ -3271,7 +3352,6 @@ void Application::setupQmlSurface(QQmlContext* surfaceContext, bool setAdditiona
 
         surfaceContext->setContextProperty("Settings", SettingsScriptingInterface::getInstance());
         surfaceContext->setContextProperty("MenuInterface", MenuScriptingInterface::getInstance());
-        surfaceContext->setContextProperty("KeyboardScriptingInterface", DependencyManager::get<KeyboardScriptingInterface>().data());
 
         surfaceContext->setContextProperty("Account", AccountServicesScriptingInterface::getInstance()); // DEPRECATED - TO BE REMOVED
         surfaceContext->setContextProperty("GlobalServices", AccountServicesScriptingInterface::getInstance()); // DEPRECATED - TO BE REMOVED
@@ -3610,10 +3690,14 @@ void Application::handleSandboxStatus(QNetworkReply* reply) {
     }
 
     // Get controller availability
+#ifdef ANDROID_APP_QUEST_INTERFACE
+    bool hasHandControllers = true;
+#else
     bool hasHandControllers = false;
     if (PluginUtils::isViveControllerAvailable() || PluginUtils::isOculusTouchControllerAvailable()) {
         hasHandControllers = true;
     }
+#endif
 
     // Check HMD use (may be technically available without being in use)
     bool hasHMD = PluginUtils::isHMDAvailable();
@@ -3643,8 +3727,8 @@ void Application::handleSandboxStatus(QNetworkReply* reply) {
     // If this is a first run we short-circuit the address passed in
     if (_firstRun.get()) {
 #if !defined(Q_OS_ANDROID)
-        DependencyManager::get<AddressManager>()->goToEntry();
-        sentTo = SENT_TO_ENTRY;
+       DependencyManager::get<AddressManager>()->goToEntry();
+       sentTo = SENT_TO_ENTRY;
 #endif
         _firstRun.set(false);
 
@@ -3755,9 +3839,12 @@ std::map<QString, QString> Application::prepareServerlessDomainContents(QUrl dom
         tmpTree->reaverageOctreeElements();
         tmpTree->sendEntities(&_entityEditSender, getEntities()->getTree(), 0, 0, 0);
     }
+    std::map<QString, QString> namedPaths = tmpTree->getNamedPaths();
 
-    return tmpTree->getNamedPaths();
+    // we must manually eraseAllOctreeElements(false) else the tmpTree will mem-leak
+    tmpTree->eraseAllOctreeElements(false);
 
+    return namedPaths;
 }
 
 void Application::loadServerlessDomain(QUrl domainURL) {
@@ -3820,8 +3907,8 @@ static inline bool isKeyEvent(QEvent::Type type) {
     return type == QEvent::KeyPress || type == QEvent::KeyRelease;
 }
 
-bool Application::handleKeyEventForFocusedEntityOrOverlay(QEvent* event) {
-    if (!_keyboardFocusedEntity.get().isInvalidID()) {
+bool Application::handleKeyEventForFocusedEntity(QEvent* event) {
+    if (_keyboardFocusedEntity.get() != UNKNOWN_ENTITY_ID) {
         switch (event->type()) {
             case QEvent::KeyPress:
             case QEvent::KeyRelease:
@@ -3837,28 +3924,6 @@ bool Application::handleKeyEventForFocusedEntityOrOverlay(QEvent* event) {
                     }
                     break;
                 }
-            default:
-                break;
-        }
-    }
-
-    if (_keyboardFocusedOverlay.get() != UNKNOWN_OVERLAY_ID) {
-        switch (event->type()) {
-            case QEvent::KeyPress:
-            case QEvent::KeyRelease: {
-                    // Only Web overlays can have focus.
-                    auto overlay = std::dynamic_pointer_cast<Web3DOverlay>(getOverlays().getOverlay(_keyboardFocusedOverlay.get()));
-                    if (overlay && overlay->getEventHandler()) {
-                        event->setAccepted(false);
-                        QCoreApplication::sendEvent(overlay->getEventHandler(), event);
-                        if (event->isAccepted()) {
-                            _lastAcceptedKeyPress = usecTimestampNow();
-                            return true;
-                        }
-                    }
-                }
-                break;
-
             default:
                 break;
         }
@@ -3906,8 +3971,8 @@ bool Application::event(QEvent* event) {
         return false;
     }
 
-    // Allow focused Entities and Overlays to handle keyboard input
-    if (isKeyEvent(event->type()) && handleKeyEventForFocusedEntityOrOverlay(event)) {
+    // Allow focused Entities to handle keyboard input
+    if (isKeyEvent(event->type()) && handleKeyEventForFocusedEntity(event)) {
         return true;
     }
 
@@ -4298,6 +4363,7 @@ void Application::keyReleaseEvent(QKeyEvent* event) {
     if (_keyboardMouseDevice->isActive()) {
         _keyboardMouseDevice->keyReleaseEvent(event);
     }
+
 }
 
 void Application::focusOutEvent(QFocusEvent* event) {
@@ -4388,8 +4454,7 @@ void Application::mouseMoveEvent(QMouseEvent* event) {
         buttons, event->modifiers());
 
     if (compositor.getReticleVisible() || !isHMDMode() || !compositor.getReticleOverDesktop() ||
-        getOverlays().getOverlayAtPoint(glm::vec2(transformedPos.x(), transformedPos.y())) != UNKNOWN_OVERLAY_ID) {
-        getOverlays().mouseMoveEvent(&mappedEvent);
+        getOverlays().getOverlayAtPoint(glm::vec2(transformedPos.x(), transformedPos.y())) != UNKNOWN_ENTITY_ID) {
         getEntities()->mouseMoveEvent(&mappedEvent);
     }
 
@@ -4422,15 +4487,10 @@ void Application::mousePressEvent(QMouseEvent* event) {
 #else
     QPointF transformedPos;
 #endif
-    QMouseEvent mappedEvent(event->type(),
-        transformedPos,
-        event->screenPos(), event->button(),
-        event->buttons(), event->modifiers());
 
-    getOverlays().mousePressEvent(&mappedEvent);
-    if (!_controllerScriptingInterface->areEntityClicksCaptured()) {
-        getEntities()->mousePressEvent(&mappedEvent);
-    }
+    QMouseEvent mappedEvent(event->type(), transformedPos, event->screenPos(), event->button(), event->buttons(), event->modifiers());
+    QUuid result = getEntities()->mousePressEvent(&mappedEvent);
+    setKeyboardFocusEntity(getEntities()->wantsKeyboardFocus(result) ? result : UNKNOWN_ENTITY_ID);
 
     _controllerScriptingInterface->emitMousePressEvent(&mappedEvent); // send events to any registered scripts
 
@@ -4469,11 +4529,7 @@ void Application::mouseDoublePressEvent(QMouseEvent* event) {
         transformedPos,
         event->screenPos(), event->button(),
         event->buttons(), event->modifiers());
-
-    getOverlays().mouseDoublePressEvent(&mappedEvent);
-    if (!_controllerScriptingInterface->areEntityClicksCaptured()) {
-        getEntities()->mouseDoublePressEvent(&mappedEvent);
-    }
+    getEntities()->mouseDoublePressEvent(&mappedEvent);
 
     // if one of our scripts have asked to capture this event, then stop processing it
     if (_controllerScriptingInterface->isMouseCaptured()) {
@@ -4497,7 +4553,6 @@ void Application::mouseReleaseEvent(QMouseEvent* event) {
         event->screenPos(), event->button(),
         event->buttons(), event->modifiers());
 
-    getOverlays().mouseReleaseEvent(&mappedEvent);
     getEntities()->mouseReleaseEvent(&mappedEvent);
 
     _controllerScriptingInterface->emitMouseReleaseEvent(&mappedEvent); // send events to any registered scripts
@@ -4946,7 +5001,11 @@ void Application::idle() {
     // Normally we check PipelineWarnings, but since idle will often take more than 10ms we only show these idle timing
     // details if we're in ExtraDebugging mode. However, the ::update() and its subcomponents will show their timing
     // details normally.
+#ifdef Q_OS_ANDROID
+    bool showWarnings = false;
+#else
     bool showWarnings = getLogger()->extraDebugging();
+#endif
     PerformanceWarning warn(showWarnings, "idle()");
 
     {
@@ -4960,33 +5019,30 @@ void Application::idle() {
         update(glm::clamp(secondsSinceLastUpdate, 0.0f, BIGGEST_DELTA_TIME_SECS));
     }
 
-
-    // Update focus highlight for entity or overlay.
-    {
-        if (!_keyboardFocusedEntity.get().isInvalidID() || _keyboardFocusedOverlay.get() != UNKNOWN_OVERLAY_ID) {
+    { // Update keyboard focus highlight
+        if (!_keyboardFocusedEntity.get().isInvalidID()) {
             const quint64 LOSE_FOCUS_AFTER_ELAPSED_TIME = 30 * USECS_PER_SECOND; // if idle for 30 seconds, drop focus
             quint64 elapsedSinceAcceptedKeyPress = usecTimestampNow() - _lastAcceptedKeyPress;
             if (elapsedSinceAcceptedKeyPress > LOSE_FOCUS_AFTER_ELAPSED_TIME) {
                 setKeyboardFocusEntity(UNKNOWN_ENTITY_ID);
-                setKeyboardFocusOverlay(UNKNOWN_OVERLAY_ID);
             } else {
-                // update position of highlight overlay
-                if (!_keyboardFocusedEntity.get().isInvalidID()) {
-                    auto entity = getEntities()->getTree()->findEntityByID(_keyboardFocusedEntity.get());
-                    if (entity && _keyboardFocusHighlight) {
-                        _keyboardFocusHighlight->setWorldOrientation(entity->getWorldOrientation());
-                        _keyboardFocusHighlight->setWorldPosition(entity->getWorldPosition());
-                    }
-                } else {
-                    // Only Web overlays can have focus.
-                    auto overlay =
-                        std::dynamic_pointer_cast<Web3DOverlay>(getOverlays().getOverlay(_keyboardFocusedOverlay.get()));
-                    if (overlay && _keyboardFocusHighlight) {
-                        _keyboardFocusHighlight->setWorldOrientation(overlay->getWorldOrientation());
-                        _keyboardFocusHighlight->setWorldPosition(overlay->getWorldPosition());
-                    }
+                if (auto entity = getEntities()->getTree()->findEntityByID(_keyboardFocusedEntity.get())) {
+                    EntityItemProperties properties;
+                    properties.setPosition(entity->getWorldPosition());
+                    properties.setRotation(entity->getWorldOrientation());
+                    properties.setDimensions(entity->getScaledDimensions() * FOCUS_HIGHLIGHT_EXPANSION_FACTOR);
+                    DependencyManager::get<EntityScriptingInterface>()->editEntity(_keyboardFocusHighlightID, properties);
                 }
             }
+        }
+    }
+
+    {
+        if (_keyboardFocusWaitingOnRenderable && getEntities()->renderableForEntityId(_keyboardFocusedEntity.get())) {
+            QUuid entityId = _keyboardFocusedEntity.get();
+            setKeyboardFocusEntity(UNKNOWN_ENTITY_ID);
+            _keyboardFocusWaitingOnRenderable = false;
+            setKeyboardFocusEntity(entityId);
         }
     }
 
@@ -5239,6 +5295,9 @@ void Application::loadSettings() {
         }
     }
 
+    auto audioScriptingInterface = reinterpret_cast<scripting::Audio*>(DependencyManager::get<AudioScriptingInterface>().data());
+    audioScriptingInterface->loadData();
+
     getMyAvatar()->loadData();
     _settingsLoaded = true;
 }
@@ -5247,6 +5306,9 @@ void Application::saveSettings() const {
     sessionRunTime.set(_sessionRunTimer.elapsed() / MSECS_PER_SECOND);
     DependencyManager::get<AudioClient>()->saveSettings();
     DependencyManager::get<LODManager>()->saveSettings();
+
+    auto audioScriptingInterface = reinterpret_cast<scripting::Audio*>(DependencyManager::get<AudioScriptingInterface>().data());
+    audioScriptingInterface->saveData();
 
     Menu::getInstance()->saveSettings();
     getMyAvatar()->saveData();
@@ -5754,6 +5816,7 @@ void Application::reloadResourceCaches() {
 
     queryOctree(NodeType::EntityServer, PacketType::EntityQuery);
 
+    getMyAvatar()->prepareAvatarEntityDataForReload();
     // Clear the entities and their renderables
     getEntities()->clear();
 
@@ -5772,6 +5835,11 @@ void Application::reloadResourceCaches() {
 
     DependencyManager::get<NodeList>()->reset();  // Force redownload of .fst models
 
+    DependencyManager::get<ScriptEngines>()->reloadAllScripts();
+    getOffscreenUI()->clearCache();
+
+    DependencyManager::get<Keyboard>()->createKeyboard();
+
     getMyAvatar()->resetFullAvatarURL();
 }
 
@@ -5782,118 +5850,83 @@ void Application::rotationModeChanged() const {
 }
 
 void Application::setKeyboardFocusHighlight(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& dimensions) {
-    // Create focus
     if (qApp->getLoginDialogPoppedUp()) {
         return;
     }
-    if (_keyboardFocusHighlightID == UNKNOWN_OVERLAY_ID || !getOverlays().isAddedOverlay(_keyboardFocusHighlightID)) {
-        _keyboardFocusHighlight = std::make_shared<Cube3DOverlay>();
-        _keyboardFocusHighlight->setAlpha(1.0f);
-        _keyboardFocusHighlight->setColor({ 0xFF, 0xEF, 0x00 });
-        _keyboardFocusHighlight->setIsSolid(false);
-        _keyboardFocusHighlight->setPulseMin(0.5);
-        _keyboardFocusHighlight->setPulseMax(1.0);
-        _keyboardFocusHighlight->setColorPulse(1.0);
-        _keyboardFocusHighlight->setIgnorePickIntersection(true);
-        _keyboardFocusHighlight->setDrawInFront(false);
-        _keyboardFocusHighlightID = getOverlays().addOverlay(_keyboardFocusHighlight);
+
+    auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+    if (_keyboardFocusHighlightID == UNKNOWN_ENTITY_ID || !entityScriptingInterface->isAddedEntity(_keyboardFocusHighlightID)) {
+        EntityItemProperties properties;
+        properties.setType(EntityTypes::Box);
+        properties.setAlpha(1.0f);
+        properties.setColor({ 0xFF, 0xEF, 0x00 });
+        properties.setPrimitiveMode(PrimitiveMode::LINES);
+        properties.getPulse().setMin(0.5);
+        properties.getPulse().setMax(1.0f);
+        properties.getPulse().setColorMode(PulseMode::IN_PHASE);
+        properties.setIgnorePickIntersection(true);
+        _keyboardFocusHighlightID = entityScriptingInterface->addEntityInternal(properties, entity::HostType::LOCAL);
     }
 
     // Position focus
-    _keyboardFocusHighlight->setWorldOrientation(rotation);
-    _keyboardFocusHighlight->setWorldPosition(position);
-    _keyboardFocusHighlight->setDimensions(dimensions);
-    _keyboardFocusHighlight->setVisible(true);
+    EntityItemProperties properties;
+    properties.setPosition(position);
+    properties.setRotation(rotation);
+    properties.setDimensions(dimensions);
+    properties.setVisible(true);
+    entityScriptingInterface->editEntity(_keyboardFocusHighlightID, properties);
 }
 
 QUuid Application::getKeyboardFocusEntity() const {
     return _keyboardFocusedEntity.get();
 }
 
-static const float FOCUS_HIGHLIGHT_EXPANSION_FACTOR = 1.05f;
-
-void Application::setKeyboardFocusEntity(const EntityItemID& entityItemID) {
-    if (qApp->getLoginDialogPoppedUp()) {
-        return;
-    }
-    if (_keyboardFocusedEntity.get() != entityItemID) {
-        _keyboardFocusedEntity.set(entityItemID);
-
-        if (_keyboardFocusHighlight && _keyboardFocusedOverlay.get() == UNKNOWN_OVERLAY_ID) {
-            _keyboardFocusHighlight->setVisible(false);
-        }
-
-        if (entityItemID == UNKNOWN_ENTITY_ID) {
-            return;
-        }
-
-        auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
-        auto properties = entityScriptingInterface->getEntityProperties(entityItemID);
-        if (!properties.getLocked() && properties.getVisible()) {
-
-            auto entities = getEntities();
-            auto entityId = _keyboardFocusedEntity.get();
-            if (entities->wantsKeyboardFocus(entityId)) {
-                entities->setProxyWindow(entityId, _window->windowHandle());
-                if (_keyboardMouseDevice->isActive()) {
-                    _keyboardMouseDevice->pluginFocusOutEvent();
-                }
-                _lastAcceptedKeyPress = usecTimestampNow();
-
-                auto entity = getEntities()->getEntity(entityId);
-                if (entity) {
-                    setKeyboardFocusHighlight(entity->getWorldPosition(), entity->getWorldOrientation(),
-                        entity->getScaledDimensions() * FOCUS_HIGHLIGHT_EXPANSION_FACTOR);
-                }
-            }
-        }
-    }
-}
-
-OverlayID Application::getKeyboardFocusOverlay() {
-    return _keyboardFocusedOverlay.get();
-}
-
-void Application::setKeyboardFocusOverlay(const OverlayID& overlayID) {
-    if (overlayID != _keyboardFocusedOverlay.get()) {
-        if (qApp->getLoginDialogPoppedUp() && !_loginDialogOverlayID.isNull()) {
-            if (overlayID == _loginDialogOverlayID) {
+void Application::setKeyboardFocusEntity(const QUuid& id) {
+    if (_keyboardFocusedEntity.get() != id) {
+        if (qApp->getLoginDialogPoppedUp() && !_loginDialogID.isNull()) {
+            if (id == _loginDialogID) {
                 emit loginDialogFocusEnabled();
-            } else {
-                // that's the only overlay we want in focus;
+            } else if (!_keyboardFocusWaitingOnRenderable) {
+                // that's the only entity we want in focus;
                 return;
             }
         }
 
-        _keyboardFocusedOverlay.set(overlayID);
+        _keyboardFocusedEntity.set(id);
 
-        if (_keyboardFocusHighlight && _keyboardFocusedEntity.get() == UNKNOWN_ENTITY_ID) {
-            _keyboardFocusHighlight->setVisible(false);
-        }
+        auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+        if (id != UNKNOWN_ENTITY_ID) {
+            EntityPropertyFlags desiredProperties;
+            desiredProperties += PROP_VISIBLE;
+            desiredProperties += PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT;
+            auto properties = entityScriptingInterface->getEntityProperties(id);
+            if (properties.getVisible()) {
+                auto entities = getEntities();
+                auto entityId = _keyboardFocusedEntity.get();
+                auto entityItemRenderable = entities->renderableForEntityId(entityId);
+                if (!entityItemRenderable) {
+                    _keyboardFocusWaitingOnRenderable = true;
+                } else if (entityItemRenderable->wantsKeyboardFocus()) {
+                    entities->setProxyWindow(entityId, _window->windowHandle());
+                    if (_keyboardMouseDevice->isActive()) {
+                        _keyboardMouseDevice->pluginFocusOutEvent();
+                    }
+                    _lastAcceptedKeyPress = usecTimestampNow();
 
-        if (overlayID == UNKNOWN_OVERLAY_ID) {
-            return;
-        }
-
-        auto overlayType = getOverlays().getOverlayType(overlayID);
-        auto isVisible = getOverlays().getProperty(overlayID, "visible").value.toBool();
-        if (overlayType == Web3DOverlay::TYPE && isVisible) {
-            auto overlay = std::dynamic_pointer_cast<Web3DOverlay>(getOverlays().getOverlay(overlayID));
-            overlay->setProxyWindow(_window->windowHandle());
-
-            if (_keyboardMouseDevice->isActive()) {
-                _keyboardMouseDevice->pluginFocusOutEvent();
+                    if (properties.getShowKeyboardFocusHighlight()) {
+                        if (auto entity = entities->getEntity(entityId)) {
+                            setKeyboardFocusHighlight(entity->getWorldPosition(), entity->getWorldOrientation(),
+                                entity->getScaledDimensions() * FOCUS_HIGHLIGHT_EXPANSION_FACTOR);
+                            return;
+                        }
+                    }
+                }
             }
-            _lastAcceptedKeyPress = usecTimestampNow();
-
-            if (overlay->getProperty("showKeyboardFocusHighlight").toBool()) {
-                auto size = overlay->getSize() * FOCUS_HIGHLIGHT_EXPANSION_FACTOR;
-                const float OVERLAY_DEPTH = 0.0105f;
-                setKeyboardFocusHighlight(overlay->getWorldPosition(), overlay->getWorldOrientation(), glm::vec3(size.x, size.y, OVERLAY_DEPTH));
-            } else if (_keyboardFocusHighlight) {
-                _keyboardFocusHighlight->setVisible(false);
-            }
         }
+
+        EntityItemProperties properties;
+        properties.setVisible(false);
+        entityScriptingInterface->editEntity(_keyboardFocusHighlightID, properties);
     }
 }
 
@@ -6270,6 +6303,19 @@ void Application::update(float deltaTime) {
     auto grabManager = DependencyManager::get<GrabManager>();
     grabManager->simulateGrabs();
 
+    // TODO: break these out into distinct perfTimers when they prove interesting
+    {
+        PROFILE_RANGE(app, "PickManager");
+        PerformanceTimer perfTimer("pickManager");
+        DependencyManager::get<PickManager>()->update();
+    }
+
+    {
+        PROFILE_RANGE(app, "PointerManager");
+        PerformanceTimer perfTimer("pointerManager");
+        DependencyManager::get<PointerManager>()->update();
+    }
+
     QSharedPointer<AvatarManager> avatarManager = DependencyManager::get<AvatarManager>();
 
     {
@@ -6283,38 +6329,57 @@ void Application::update(float deltaTime) {
                 PROFILE_RANGE(simulation_physics, "PrePhysics");
                 PerformanceTimer perfTimer("prePhysics)");
                 {
+                    PROFILE_RANGE(simulation_physics, "RemoveEntities");
                     const VectorOfMotionStates& motionStates = _entitySimulation->getObjectsToRemoveFromPhysics();
-                    _physicsEngine->removeObjects(motionStates);
+                    {
+                        PROFILE_RANGE_EX(simulation_physics, "NumObjs", 0xffff0000, (uint64_t)motionStates.size());
+                        _physicsEngine->removeObjects(motionStates);
+                    }
                     _entitySimulation->deleteObjectsRemovedFromPhysics();
                 }
 
-                VectorOfMotionStates motionStates;
-                getEntities()->getTree()->withReadLock([&] {
-                    _entitySimulation->getObjectsToAddToPhysics(motionStates);
-                    _physicsEngine->addObjects(motionStates);
-
-                });
-                getEntities()->getTree()->withReadLock([&] {
-                    _entitySimulation->getObjectsToChange(motionStates);
-                    VectorOfMotionStates stillNeedChange = _physicsEngine->changeObjects(motionStates);
-                    _entitySimulation->setObjectsToChange(stillNeedChange);
-                });
+                {
+                    PROFILE_RANGE(simulation_physics, "AddEntities");
+                    VectorOfMotionStates motionStates;
+                    getEntities()->getTree()->withReadLock([&] {
+                        _entitySimulation->getObjectsToAddToPhysics(motionStates);
+                        PROFILE_RANGE_EX(simulation_physics, "NumObjs", 0xffff0000, (uint64_t)motionStates.size());
+                        _physicsEngine->addObjects(motionStates);
+                    });
+                }
+                {
+                    VectorOfMotionStates motionStates;
+                    PROFILE_RANGE(simulation_physics, "ChangeEntities");
+                    getEntities()->getTree()->withReadLock([&] {
+                        _entitySimulation->getObjectsToChange(motionStates);
+                        VectorOfMotionStates stillNeedChange = _physicsEngine->changeObjects(motionStates);
+                        _entitySimulation->setObjectsToChange(stillNeedChange);
+                    });
+                }
 
                 _entitySimulation->applyDynamicChanges();
 
                 t1 = std::chrono::high_resolution_clock::now();
 
-                PhysicsEngine::Transaction transaction;
-                avatarManager->buildPhysicsTransaction(transaction);
-                _physicsEngine->processTransaction(transaction);
-                avatarManager->handleProcessedPhysicsTransaction(transaction);
-                myAvatar->getCharacterController()->buildPhysicsTransaction(transaction);
-                _physicsEngine->processTransaction(transaction);
-                myAvatar->getCharacterController()->handleProcessedPhysicsTransaction(transaction);
-                myAvatar->prepareForPhysicsSimulation();
-                _physicsEngine->forEachDynamic([&](EntityDynamicPointer dynamic) {
-                    dynamic->prepareForPhysicsSimulation();
-                });
+                {
+                    PROFILE_RANGE(simulation_physics, "Avatars");
+                    PhysicsEngine::Transaction transaction;
+                    avatarManager->buildPhysicsTransaction(transaction);
+                    _physicsEngine->processTransaction(transaction);
+                    avatarManager->handleProcessedPhysicsTransaction(transaction);
+                    myAvatar->getCharacterController()->buildPhysicsTransaction(transaction);
+                    _physicsEngine->processTransaction(transaction);
+                    myAvatar->getCharacterController()->handleProcessedPhysicsTransaction(transaction);
+                    myAvatar->prepareForPhysicsSimulation();
+                    _physicsEngine->enableGlobalContactAddedCallback(myAvatar->isFlying());
+                }
+
+                {
+                    PROFILE_RANGE(simulation_physics, "PrepareActions");
+                    _physicsEngine->forEachDynamic([&](EntityDynamicPointer dynamic) {
+                        dynamic->prepareForPhysicsSimulation();
+                    });
+                }
             }
             auto t2 = std::chrono::high_resolution_clock::now();
             {
@@ -6417,22 +6482,9 @@ void Application::update(float deltaTime) {
 
     updateLOD(deltaTime);
 
-    if (!_loginDialogOverlayID.isNull()) {
-        _loginStateManager.update(getMyAvatar()->getDominantHand(), _loginDialogOverlayID);
-        updateLoginDialogOverlayPosition();
-    }
-
-    // TODO: break these out into distinct perfTimers when they prove interesting
-    {
-        PROFILE_RANGE(app, "PickManager");
-        PerformanceTimer perfTimer("pickManager");
-        DependencyManager::get<PickManager>()->update();
-    }
-
-    {
-        PROFILE_RANGE(app, "PointerManager");
-        PerformanceTimer perfTimer("pointerManager");
-        DependencyManager::get<PointerManager>()->update();
+    if (!_loginDialogID.isNull()) {
+        _loginStateManager.update(getMyAvatar()->getDominantHand(), _loginDialogID);
+        updateLoginDialogPosition();
     }
 
     {
@@ -6940,9 +6992,6 @@ void Application::updateWindowTitle() const {
 }
 
 void Application::clearDomainOctreeDetails(bool clearAll) {
-    // before we delete all entities get MyAvatar's AvatarEntityData ready
-    getMyAvatar()->prepareAvatarEntityDataForReload();
-
     // if we're about to quit, we really don't need to do the rest of these things...
     if (_aboutToQuit) {
         return;
@@ -6958,7 +7007,7 @@ void Application::clearDomainOctreeDetails(bool clearAll) {
     });
 
     // reset the model renderer
-    clearAll ? getEntities()->clear() : getEntities()->clearNonLocalEntities();
+    clearAll ? getEntities()->clear() : getEntities()->clearDomainAndNonOwnedEntities();
 
     auto skyStage = DependencyManager::get<SceneScriptingInterface>()->getSkyStage();
 
@@ -7015,17 +7064,19 @@ void Application::nodeActivated(SharedNodePointer node) {
 
 #if !defined(DISABLE_QML)
         auto offscreenUi = getOffscreenUI();
-        auto assetDialog = offscreenUi ? offscreenUi->getRootItem()->findChild<QQuickItem*>("AssetServer") : nullptr;
 
-        if (assetDialog) {
+        if (offscreenUi) {
             auto nodeList = DependencyManager::get<NodeList>();
 
             if (nodeList->getThisNodeCanWriteAssets()) {
                 // call reload on the shown asset browser dialog to get the mappings (if permissions allow)
-                QMetaObject::invokeMethod(assetDialog, "reload");
+                auto assetDialog = offscreenUi ? offscreenUi->getRootItem()->findChild<QQuickItem*>("AssetServer") : nullptr;
+                if (assetDialog) {
+                    QMetaObject::invokeMethod(assetDialog, "reload");
+                }
             } else {
                 // we switched to an Asset Server that we can't modify, hide the Asset Browser
-                assetDialog->setVisible(false);
+                offscreenUi->hide("AssetServer");
             }
         }
 #endif
@@ -7198,7 +7249,6 @@ void Application::registerScriptEngineWithApplicationServices(ScriptEnginePointe
     connect(scriptEngine.data(), &ScriptEngine::finished, clipboardScriptable, &ClipboardScriptingInterface::deleteLater);
 
     scriptEngine->registerGlobalObject("Overlays", &_overlays);
-    qScriptRegisterMetaType(scriptEngine.data(), OverlayPropertyResultToScriptValue, OverlayPropertyResultFromScriptValue);
     qScriptRegisterMetaType(scriptEngine.data(), RayToOverlayIntersectionResultToScriptValue,
                             RayToOverlayIntersectionResultFromScriptValue);
 
@@ -7314,8 +7364,6 @@ void Application::registerScriptEngineWithApplicationServices(ScriptEnginePointe
     scriptEngine->registerGlobalObject("AddressManager", DependencyManager::get<AddressManager>().data());
     scriptEngine->registerGlobalObject("HifiAbout", AboutUtil::getInstance());
     scriptEngine->registerGlobalObject("ResourceRequestObserver", DependencyManager::get<ResourceRequestObserver>().data());
-
-    qScriptRegisterMetaType(scriptEngine.data(), OverlayIDtoScriptValue, OverlayIDfromScriptValue);
 
     registerInteractiveWindowMetaType(scriptEngine.data());
 
@@ -8279,6 +8327,7 @@ void Application::loadDomainConnectionDialog() {
 }
 
 void Application::toggleLogDialog() {
+#ifndef ANDROID_APP_QUEST_INTERFACE
     if (getLoginDialogPoppedUp()) {
         return;
     }
@@ -8287,7 +8336,7 @@ void Application::toggleLogDialog() {
         bool keepOnTop =_keepLogWindowOnTop.get();
 #ifdef Q_OS_WIN
         _logDialog = new LogDialog(keepOnTop ? qApp->getWindow() : nullptr, getLogger());
-#else
+#elif !defined(Q_OS_ANDROID)
         _logDialog = new LogDialog(nullptr, getLogger());
 
         if (keepOnTop) {
@@ -8302,6 +8351,7 @@ void Application::toggleLogDialog() {
     } else {
         _logDialog->show();
     }
+#endif
 }
 
  void Application::recreateLogWindow(int keepOnTop) {
@@ -8838,45 +8888,47 @@ void Application::setShowBulletConstraintLimits(bool value) {
     _physicsEngine->setShowBulletConstraintLimits(value);
 }
 
-void Application::createLoginDialogOverlay() {
-    const glm::vec2 LOGIN_OVERLAY_DIMENSIONS{ 0.89f, 0.5f };
-    const auto OVERLAY_OFFSET = glm::vec2(0.7f, -0.1f);
+void Application::createLoginDialog() {
+    const glm::vec3 LOGIN_DIMENSIONS { 0.89f, 0.5f, 0.01f };
+    const auto OFFSET = glm::vec2(0.7f, -0.1f);
     auto cameraPosition = _myCamera.getPosition();
     auto cameraOrientation = _myCamera.getOrientation();
     auto upVec = getMyAvatar()->getWorldOrientation() * Vectors::UNIT_Y;
     auto headLookVec = (cameraOrientation * Vectors::FRONT);
     // DEFAULT_DPI / tablet scale percentage
-    const float OVERLAY_DPI = 31.0f / (75.0f / 100.0f);
-    auto offset = headLookVec * OVERLAY_OFFSET.x;
-    auto overlayPosition = (cameraPosition + offset) + (upVec * OVERLAY_OFFSET.y);
-    QVariantMap overlayProperties = {
-        { "name", "LoginDialogOverlay" },
-        { "url", OVERLAY_LOGIN_DIALOG },
-        { "position", vec3toVariant(overlayPosition) },
-        { "orientation", quatToVariant(cameraOrientation) },
-        { "isSolid", true },
-        { "grabbable", false },
-        { "ignorePickIntersection", false },
-        { "alpha", 1.0 },
-        { "dimensions", vec2ToVariant(LOGIN_OVERLAY_DIMENSIONS)},
-        { "dpi", OVERLAY_DPI },
-        { "visible", true }
-    };
-    auto& overlays = getOverlays();
-    _loginDialogOverlayID = overlays.addOverlay("web3d", overlayProperties);
-    auto loginOverlay = std::dynamic_pointer_cast<Web3DOverlay>(overlays.getOverlay(_loginDialogOverlayID));
+    const float DPI = 31.0f / (75.0f / 100.0f);
+    auto offset = headLookVec * OFFSET.x;
+    auto position = (cameraPosition + offset) + (upVec * OFFSET.y);
+
+    EntityItemProperties properties;
+    properties.setType(EntityTypes::Web);
+    properties.setName("LoginDialogEntity");
+    properties.setSourceUrl(LOGIN_DIALOG.toString());
+    properties.setPosition(position);
+    properties.setRotation(cameraOrientation);
+    properties.setDimensions(LOGIN_DIMENSIONS);
+    properties.setPrimitiveMode(PrimitiveMode::SOLID);
+    properties.getGrab().setGrabbable(false);
+    properties.setIgnorePickIntersection(false);
+    properties.setAlpha(1.0f);
+    properties.setDPI(DPI);
+    properties.setVisible(true);
+
+    auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+    _loginDialogID = entityScriptingInterface->addEntityInternal(properties, entity::HostType::LOCAL);
+
     auto keyboard = DependencyManager::get<Keyboard>().data();
-    if (!keyboard->getAnchorID().isNull() && !_loginDialogOverlayID.isNull()) {
-        const auto KEYBOARD_LOCAL_ORIENTATION = glm::quat(0.0f, 0.0, 1.0f, 0.25f);
+    if (!keyboard->getAnchorID().isNull() && !_loginDialogID.isNull()) {
         auto keyboardLocalOffset = cameraOrientation * glm::vec3(-0.4f * getMyAvatar()->getSensorToWorldScale(), -0.3f, 0.2f);
-        QVariantMap properties {
-            { "position", vec3toVariant(overlayPosition + keyboardLocalOffset) },
-            { "orientation", quatToVariant(cameraOrientation * KEYBOARD_LOCAL_ORIENTATION) },
-        };
-        overlays.editOverlay(keyboard->getAnchorID(), properties);
+
+        EntityItemProperties properties;
+        properties.setPosition(position + keyboardLocalOffset);
+        properties.setRotation(cameraOrientation * Quaternions::Y_180);
+
+        entityScriptingInterface->editEntity(keyboard->getAnchorID(), properties);
         keyboard->setResetKeyboardPositionOnRaise(false);
     }
-    setKeyboardFocusOverlay(_loginDialogOverlayID);
+    setKeyboardFocusEntity(_loginDialogID);
     emit loginDialogFocusEnabled();
     getApplicationCompositor().getReticleInterface()->setAllowMouseCapture(false);
     getApplicationCompositor().getReticleInterface()->setVisible(false);
@@ -8885,38 +8937,43 @@ void Application::createLoginDialogOverlay() {
     }
 }
 
-void Application::updateLoginDialogOverlayPosition() {
+void Application::updateLoginDialogPosition() {
     const float LOOK_AWAY_THRESHOLD_ANGLE = 70.0f;
-    const auto OVERLAY_OFFSET = glm::vec2(0.7f, -0.1f);
-    auto& overlays = getOverlays();
-    auto loginOverlay = std::dynamic_pointer_cast<Web3DOverlay>(overlays.getOverlay(_loginDialogOverlayID));
-    auto overlayPositionVec = loginOverlay->getWorldPosition();
+    const auto OFFSET = glm::vec2(0.7f, -0.1f);
+
+    auto entityScriptingInterface = DependencyManager::get<EntityScriptingInterface>();
+    EntityPropertyFlags desiredProperties;
+    desiredProperties += PROP_POSITION;
+    auto properties = entityScriptingInterface->getEntityProperties(_loginDialogID, desiredProperties);
+    auto positionVec = properties.getPosition();
     auto cameraPositionVec = _myCamera.getPosition();
     auto cameraOrientation = cancelOutRollAndPitch(_myCamera.getOrientation());
     auto headLookVec = (cameraOrientation * Vectors::FRONT);
-    auto overlayToHeadVec = overlayPositionVec - cameraPositionVec;
-    auto pointAngle = (glm::acos(glm::dot(glm::normalize(overlayToHeadVec), glm::normalize(headLookVec))) * 180.0f / PI);
+    auto entityToHeadVec = positionVec - cameraPositionVec;
+    auto pointAngle = (glm::acos(glm::dot(glm::normalize(entityToHeadVec), glm::normalize(headLookVec))) * 180.0f / PI);
     auto upVec = getMyAvatar()->getWorldOrientation() * Vectors::UNIT_Y;
-    auto offset = headLookVec * OVERLAY_OFFSET.x;
-    auto newOverlayPositionVec = (cameraPositionVec + offset) + (upVec * OVERLAY_OFFSET.y);
-    auto newOverlayOrientation = glm::inverse(glm::quat_cast(glm::lookAt(newOverlayPositionVec, cameraPositionVec, upVec))) * Quaternions::Y_180;
+    auto offset = headLookVec * OFFSET.x;
+    auto newPositionVec = (cameraPositionVec + offset) + (upVec * OFFSET.y);
 
-    bool overlayOutOfBounds = glm::distance(overlayPositionVec, cameraPositionVec) > 1.0f;
+    bool outOfBounds = glm::distance(positionVec, cameraPositionVec) > 1.0f;
 
-    if (pointAngle > LOOK_AWAY_THRESHOLD_ANGLE || overlayOutOfBounds) {
-        QVariantMap properties {
-            {"position", vec3toVariant(newOverlayPositionVec)},
-            {"orientation", quatToVariant(newOverlayOrientation)}
-        };
-        overlays.editOverlay(_loginDialogOverlayID, properties);
-        const auto KEYBOARD_LOCAL_ORIENTATION = glm::quat(0.0f, 0.0, 1.0f, 0.25f);
-        auto keyboardLocalOffset = newOverlayOrientation * glm::vec3(-0.4f * getMyAvatar()->getSensorToWorldScale(), -0.3f, 0.2f);
-        QVariantMap keyboardProperties {
-            { "position", vec3toVariant(newOverlayPositionVec + keyboardLocalOffset) },
-            { "orientation", quatToVariant(newOverlayOrientation * KEYBOARD_LOCAL_ORIENTATION) },
-        };
-        auto keyboard = DependencyManager::get<Keyboard>().data();
-        overlays.editOverlay(keyboard->getAnchorID(), keyboardProperties);
+    if (pointAngle > LOOK_AWAY_THRESHOLD_ANGLE || outOfBounds) {
+        {
+            EntityItemProperties properties;
+            properties.setPosition(newPositionVec);
+            properties.setRotation(cameraOrientation);
+            entityScriptingInterface->editEntity(_loginDialogID, properties);
+        }
+
+        {
+            glm::vec3 keyboardLocalOffset = cameraOrientation * glm::vec3(-0.4f * getMyAvatar()->getSensorToWorldScale(), -0.3f, 0.2f);
+            glm::quat keyboardOrientation = cameraOrientation * glm::quat(glm::radians(glm::vec3(-30.0f, 180.0f, 0.0f)));
+
+            EntityItemProperties properties;
+            properties.setPosition(newPositionVec + keyboardLocalOffset);
+            properties.setRotation(keyboardOrientation);
+            entityScriptingInterface->editEntity(DependencyManager::get<Keyboard>()->getAnchorID(), properties);
+        }
     }
 }
 
@@ -8933,10 +8990,9 @@ void Application::onDismissedLoginDialog() {
     loginDialogPoppedUp.set(false);
     auto keyboard = DependencyManager::get<Keyboard>().data();
     keyboard->setResetKeyboardPositionOnRaise(true);
-    if (!_loginDialogOverlayID.isNull()) {
-        // deleting overlay.
-        getOverlays().deleteOverlay(_loginDialogOverlayID);
-        _loginDialogOverlayID = OverlayID();
+    if (!_loginDialogID.isNull()) {
+        DependencyManager::get<EntityScriptingInterface>()->deleteEntity(_loginDialogID);
+        _loginDialogID = QUuid();
         _loginStateManager.tearDown();
     }
     resumeAfterLoginDialogActionTaken();
@@ -9102,12 +9158,12 @@ void Application::updateSystemTabletMode() {
     }
 }
 
-OverlayID Application::getTabletScreenID() const {
+QUuid Application::getTabletScreenID() const {
     auto HMD = DependencyManager::get<HMDScriptingInterface>();
     return HMD->getCurrentTabletScreenID();
 }
 
-OverlayID Application::getTabletHomeButtonID() const {
+QUuid Application::getTabletHomeButtonID() const {
     auto HMD = DependencyManager::get<HMDScriptingInterface>();
     return HMD->getCurrentHomeButtonID();
 }
@@ -9118,7 +9174,7 @@ QUuid Application::getTabletFrameID() const {
 }
 
 QVector<QUuid> Application::getTabletIDs() const {
-    // Most important overlays first.
+    // Most important first.
     QVector<QUuid> result;
     auto HMD = DependencyManager::get<HMDScriptingInterface>();
     result << HMD->getCurrentTabletScreenID();
@@ -9158,23 +9214,40 @@ void Application::beforeEnterBackground() {
     clearDomainOctreeDetails();
 }
 
+
+
 void Application::enterBackground() {
     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(),
                               "stop", Qt::BlockingQueuedConnection);
+// Quest only supports one plugin which can't be deactivated currently
+#if !defined(ANDROID_APP_QUEST_INTERFACE)
     if (getActiveDisplayPlugin()->isActive()) {
         getActiveDisplayPlugin()->deactivate();
     }
+#endif
 }
 
 void Application::enterForeground() {
     QMetaObject::invokeMethod(DependencyManager::get<AudioClient>().data(),
                                   "start", Qt::BlockingQueuedConnection);
+// Quest only supports one plugin which can't be deactivated currently
+#if !defined(ANDROID_APP_QUEST_INTERFACE)
     if (!getActiveDisplayPlugin() || getActiveDisplayPlugin()->isActive() || !getActiveDisplayPlugin()->activate()) {
         qWarning() << "Could not re-activate display plugin";
     }
+#endif
     auto nodeList = DependencyManager::get<NodeList>();
     nodeList->setSendDomainServerCheckInEnabled(true);
 }
+
+
+void Application::toggleAwayMode(){
+    QKeyEvent event = QKeyEvent (QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+    QCoreApplication::sendEvent (this, &event);
+}
+
+
 #endif
+
 
 #include "Application.moc"

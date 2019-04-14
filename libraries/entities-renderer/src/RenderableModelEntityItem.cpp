@@ -181,9 +181,11 @@ void RenderableModelEntityItem::updateModelBounds() {
         updateRenderItems = true;
     }
 
-    if (model->getScaleToFitDimensions() != getScaledDimensions() ||
-            model->getRegistrationPoint() != getRegistrationPoint() ||
-            !model->getIsScaledToFit()) {
+    bool overridingModelTransform = model->isOverridingModelTransformAndOffset();
+    if (!overridingModelTransform &&
+        (model->getScaleToFitDimensions() != getScaledDimensions() ||
+         model->getRegistrationPoint() != getRegistrationPoint() ||
+         !model->getIsScaledToFit())) {
         // The machinery for updateModelBounds will give existing models the opportunity to fix their
         // translation/rotation/scale/registration.  The first two are straightforward, but the latter two
         // have guards to make sure they don't happen after they've already been set.  Here we reset those guards.
@@ -280,11 +282,7 @@ bool RenderableModelEntityItem::findDetailedParabolaIntersection(const glm::vec3
 }
 
 void RenderableModelEntityItem::fetchCollisionGeometryResource() {
-    QUrl hullURL(getCollisionShapeURL());
-    QUrlQuery queryArgs(hullURL);
-    queryArgs.addQueryItem("collision-hull", "");
-    hullURL.setQuery(queryArgs);
-    _compoundShapeResource = DependencyManager::get<ModelCache>()->getCollisionGeometryResource(hullURL);
+    _compoundShapeResource = DependencyManager::get<ModelCache>()->getCollisionGeometryResource(getCollisionShapeURL());
 }
 
 bool RenderableModelEntityItem::computeShapeFailedToLoad() {
@@ -932,9 +930,9 @@ void RenderableModelEntityItem::setJointTranslationsSet(const QVector<bool>& tra
     _needsJointSimulation = true;
 }
 
-void RenderableModelEntityItem::locationChanged(bool tellPhysics) {
+void RenderableModelEntityItem::locationChanged(bool tellPhysics, bool tellChildren) {
     DETAILED_PERFORMANCE_TIMER("locationChanged");
-    EntityItem::locationChanged(tellPhysics);
+    EntityItem::locationChanged(tellPhysics, tellChildren);
     auto model = getModel();
     if (model && model->isLoaded()) {
         model->updateRenderItems();
@@ -957,23 +955,6 @@ QStringList RenderableModelEntityItem::getJointNames() const {
         }
     }
     return result;
-}
-
-void RenderableModelEntityItem::setAnimationURL(const QString& url) {
-    QString oldURL = getAnimationURL();
-    ModelEntityItem::setAnimationURL(url);
-    if (oldURL != getAnimationURL()) {
-        _needsAnimationReset = true;
-    }
-}
-
-bool RenderableModelEntityItem::needsAnimationReset() const {
-    return _needsAnimationReset;
-}
-
-QString RenderableModelEntityItem::getAnimationURLAndReset() {
-    _needsAnimationReset = false;
-    return getAnimationURL();
 }
 
 scriptable::ScriptableModelBase render::entities::ModelEntityRenderer::getScriptableModel() {
@@ -1053,9 +1034,7 @@ void RenderableModelEntityItem::copyAnimationJointDataToModel() {
     });
 
     if (changed) {
-        forEachChild([&](SpatiallyNestablePointer object) {
-            object->locationChanged(false);
-        });
+        locationChanged(false, true);
     }
 }
 
@@ -1100,7 +1079,7 @@ render::hifi::Tag ModelEntityRenderer::getTagMask() const {
 
 uint32_t ModelEntityRenderer::metaFetchMetaSubItems(ItemIDs& subItems) { 
     if (_model) {
-        auto metaSubItems = _subRenderItemIDs;
+        auto metaSubItems = _model->fetchRenderItemIDs();
         subItems.insert(subItems.end(), metaSubItems.begin(), metaSubItems.end());
         return (uint32_t)metaSubItems.size();
     }
@@ -1264,7 +1243,7 @@ bool ModelEntityRenderer::needsRenderUpdateFromTypedEntity(const TypedEntityPoin
             return false;
         }
 
-        if (_lastTextures != entity->getTextures()) {
+        if (_textures != entity->getTextures()) {
             return true;
         }
 
@@ -1342,11 +1321,8 @@ void ModelEntityRenderer::doRenderUpdateSynchronousTyped(const ScenePointer& sce
     if (!_hasModel) {
         if (model) {
             model->removeFromScene(scene, transaction);
+            entity->bumpAncestorChainRenderableVersion();
             withWriteLock([&] { _model.reset(); });
-            transaction.updateItem<PayloadProxyInterface>(getRenderItemID(), [](PayloadProxyInterface& data) {
-                auto entityRenderer = static_cast<EntityRenderer*>(&data);
-                entityRenderer->clearSubRenderItemIDs();
-            });
             emit DependencyManager::get<scriptable::ModelProviderFactory>()->
                 modelRemovedFromScene(entity->getEntityItemID(), NestableType::Entity, _model);
         }
@@ -1418,15 +1394,14 @@ void ModelEntityRenderer::doRenderUpdateSynchronousTyped(const ScenePointer& sce
         entity->_originalTexturesRead = true;
     }
 
-    if (_lastTextures != entity->getTextures()) {
+    if (_textures != entity->getTextures()) {
+        QVariantMap newTextures;
         withWriteLock([&] {
             _texturesLoaded = false;
-            _lastTextures = entity->getTextures();
+            _textures = entity->getTextures();
+            newTextures = parseTexturesToMap(_textures, entity->_originalTextures);
         });
-        auto newTextures = parseTexturesToMap(_lastTextures, entity->_originalTextures);
-        if (newTextures != model->getTextures()) {
-            model->setTextures(newTextures);
-        }
+        model->setTextures(newTextures);
     }
     if (entity->_needsJointSimulation) {
         entity->copyAnimationJointDataToModel();
@@ -1464,12 +1439,7 @@ void ModelEntityRenderer::doRenderUpdateSynchronousTyped(const ScenePointer& sce
             render::Item::Status::Getters statusGetters;
             makeStatusGetters(entity, statusGetters);
             model->addToScene(scene, transaction, statusGetters);
-
-            auto newRenderItemIDs{ model->fetchRenderItemIDs() };
-            transaction.updateItem<PayloadProxyInterface>(getRenderItemID(), [newRenderItemIDs](PayloadProxyInterface& data) {
-                auto entityRenderer = static_cast<EntityRenderer*>(&data);
-                entityRenderer->setSubRenderItemIDs(newRenderItemIDs);
-            });
+            entity->bumpAncestorChainRenderableVersion();
             processMaterials();
         }
     }
@@ -1494,11 +1464,17 @@ void ModelEntityRenderer::doRenderUpdateSynchronousTyped(const ScenePointer& sce
     if (_animating) {
         DETAILED_PROFILE_RANGE(simulation_physics, "Animate");
 
-        if (_animation && entity->needsAnimationReset()) {
-            //(_animation->getURL().toString() != entity->getAnimationURL())) { // bad check
-            // the joints have been mapped before but we have a new animation to load
-            _animation.reset();
-            _jointMappingCompleted = false;
+        auto animationURL = entity->getAnimationURL();
+        bool animationChanged = _animationURL != animationURL;
+        if (animationChanged) {
+            _animationURL = animationURL;
+
+            if (_animation) {
+                //(_animation->getURL().toString() != entity->getAnimationURL())) { // bad check
+                // the joints have been mapped before but we have a new animation to load
+                _animation.reset();
+                _jointMappingCompleted = false;
+            }
         }
 
         if (!_jointMappingCompleted) {
@@ -1563,7 +1539,7 @@ void ModelEntityRenderer::mapJoints(const TypedEntityPointer& entity, const Mode
     }
 
     if (!_animation) {
-        _animation = DependencyManager::get<AnimationCache>()->getAnimation(entity->getAnimationURLAndReset());
+        _animation = DependencyManager::get<AnimationCache>()->getAnimation(_animationURL);
     }
 
     if (_animation && _animation->isLoaded()) {

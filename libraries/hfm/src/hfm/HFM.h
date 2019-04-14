@@ -25,6 +25,8 @@
 #include <graphics/Geometry.h>
 #include <graphics/Material.h>
 
+#include <image/ColorChannel.h>
+
 #if defined(Q_OS_ANDROID)
 #define HFM_PACK_NORMALS 0
 #else
@@ -75,8 +77,6 @@ struct JointShapeInfo {
 class Joint {
 public:
     JointShapeInfo shapeInfo;
-    QVector<int> freeLineage;
-    bool isFree;
     int parentIndex;
     float distanceToParent;
 
@@ -121,10 +121,12 @@ public:
 /// A texture map.
 class Texture {
 public:
+
     QString id;
     QString name;
     QByteArray filename;
     QByteArray content;
+    image::ColorChannel sourceChannel { image::ColorChannel::NONE };
 
     Transform transform;
     int maxNumPixels { MAX_NUM_PIXELS_FOR_FBX_TEXTURE };
@@ -271,6 +273,15 @@ public:
     {}
 };
 
+class FlowData {
+public:
+    FlowData() {};
+    QVariantMap _physicsConfig;
+    QVariantMap _collisionsConfig;
+    bool shouldInitFlow() const { return _physicsConfig.size() > 0; }
+    bool shouldInitCollisions() const { return _collisionsConfig.size() > 0; }
+};
+
 /// The runtime model format.
 class Model {
 public:
@@ -290,8 +301,6 @@ public:
     QHash<QString, Material> materials;
 
     glm::mat4 offset; // This includes offset, rotation, and scale as specified by the FST file
-
-    glm::vec3 palmDirection;
 
     glm::vec3 neckPivot;
 
@@ -319,7 +328,7 @@ public:
     QList<QString> blendshapeChannelNames;
 
     QMap<int, glm::quat> jointRotationOffsets;
-    QMap<QString, QString> hfmToHifiJointNameMapping;
+    FlowData flowData;
 };
 
 };
@@ -344,6 +353,7 @@ typedef hfm::Mesh HFMMesh;
 typedef hfm::AnimationFrame HFMAnimationFrame;
 typedef hfm::Light HFMLight;
 typedef hfm::Model HFMModel;
+typedef hfm::FlowData FlowData;
 
 Q_DECLARE_METATYPE(HFMAnimationFrame)
 Q_DECLARE_METATYPE(QVector<HFMAnimationFrame>)

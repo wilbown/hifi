@@ -16,6 +16,7 @@
 #include <QtCore/QtGlobal>
 #include <QUrl>
 #include <QImage>
+#include <QRgb>
 #include <QBuffer>
 #include <QImageReader>
 
@@ -23,6 +24,8 @@
 #include <Profile.h>
 #include <StatTracker.h>
 #include <GLMHelpers.h>
+
+#include "TGAReader.h"
 
 #include "ImageLogging.h"
 
@@ -202,6 +205,16 @@ QImage processRawImageData(QIODevice& content, const std::string& filename) {
     // Help the QImage loader by extracting the image file format from the url filename ext.
     // Some tga are not created properly without it.
     auto filenameExtension = filename.substr(filename.find_last_of('.') + 1);
+    content.open(QIODevice::ReadOnly);
+
+    if (filenameExtension == "tga") {
+        QImage image = image::readTGA(content);
+        if (!image.isNull()) {
+            return image;
+        }
+        content.reset();
+    }
+
     QImageReader imageReader(&content, filenameExtension.c_str());
 
     if (imageReader.canRead()) {
@@ -221,7 +234,45 @@ QImage processRawImageData(QIODevice& content, const std::string& filename) {
     return QImage();
 }
 
-gpu::TexturePointer processImage(std::shared_ptr<QIODevice> content, const std::string& filename,
+void mapToRedChannel(QImage& image, ColorChannel sourceChannel) {
+    // Change format of image so we know exactly how to process it
+    if (image.format() != QImage::Format_ARGB32) {
+        image = image.convertToFormat(QImage::Format_ARGB32);
+    }
+
+    for (int i = 0; i < image.height(); i++) {
+        QRgb* pixel = reinterpret_cast<QRgb*>(image.scanLine(i));
+        // Past end pointer
+        QRgb* lineEnd = pixel + image.width();
+
+        // Transfer channel data from source to target
+        for (; pixel < lineEnd; pixel++) {
+            int colorValue;
+            switch (sourceChannel) {
+            case ColorChannel::RED:
+                colorValue = qRed(*pixel);
+                break;
+            case ColorChannel::GREEN:
+                colorValue = qGreen(*pixel);
+                break;
+            case ColorChannel::BLUE:
+                colorValue = qBlue(*pixel);
+                break;
+            case ColorChannel::ALPHA:
+                colorValue = qAlpha(*pixel);
+                break;
+            default:
+                colorValue = qRed(*pixel);
+                break;
+            }
+
+            // Dump the color in the red channel, ignore the rest
+            *pixel = qRgba(colorValue, 0, 0, 255);
+        }
+    }
+}
+
+gpu::TexturePointer processImage(std::shared_ptr<QIODevice> content, const std::string& filename, ColorChannel sourceChannel,
                                  int maxNumPixels, TextureUsage::Type textureType,
                                  bool compress, BackendTarget target, const std::atomic<bool>& abortProcessing) {
 
@@ -251,6 +302,11 @@ gpu::TexturePointer processImage(std::shared_ptr<QIODevice> content, const std::
         qCDebug(imagelogging).nospace() << "Downscaled " << " (" <<
             QSize(originalWidth, originalHeight) << " to " <<
             QSize(imageWidth, imageHeight) << ")";
+    }
+
+    // Re-map to image with single red channel texture if requested
+    if (sourceChannel != ColorChannel::NONE) {
+        mapToRedChannel(image, sourceChannel);
     }
     
     auto loader = TextureUsage::getTextureLoaderForType(textureType);

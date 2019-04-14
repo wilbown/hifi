@@ -117,6 +117,10 @@ Item {
                     }
                     StatText {
                         visible: root.expanded
+                        text: "Heroes Count/Updated: " + root.heroAvatarCount + "/" + root.updatedHeroAvatarCount
+                    }
+                    StatText {
+                        visible: root.expanded
                         text: "Avatars NOT Updated: " + root.notUpdatedAvatarCount
                     }
                     StatText {
@@ -129,11 +133,11 @@ Item {
                     }
                     StatText {
                         visible: root.expanded
-                        text: "Intersection calls: Entities/Overlays/Avatars/HUD\n    " +
-                                    "Styluses:\t" + root.stylusPicksUpdated.x + "/" + root.stylusPicksUpdated.y + "/" + root.stylusPicksUpdated.z + "/" + root.stylusPicksUpdated.w + "\n    " +
-                                    "Rays:\t" + root.rayPicksUpdated.x + "/" + root.rayPicksUpdated.y + "/" + root.rayPicksUpdated.z + "/" + root.rayPicksUpdated.w + "\n    " +
-                                    "Parabolas:\t" + root.parabolaPicksUpdated.x + "/" + root.parabolaPicksUpdated.y + "/" + root.parabolaPicksUpdated.z + "/" + root.parabolaPicksUpdated.w + "\n    " +
-                                    "Colliders:\t" + root.collisionPicksUpdated.x + "/" + root.collisionPicksUpdated.y + "/" + root.collisionPicksUpdated.z + "/" + root.collisionPicksUpdated.w
+                        text: "Intersection calls: Entities/Avatars/HUD\n    " +
+                                    "Styluses:\t" + root.stylusPicksUpdated.x + "/" + root.stylusPicksUpdated.y + "/" + root.stylusPicksUpdated.z + "\n    " +
+                                    "Rays:\t" + root.rayPicksUpdated.x + "/" + root.rayPicksUpdated.y + "/" + root.rayPicksUpdated.z + "\n    " +
+                                    "Parabolas:\t" + root.parabolaPicksUpdated.x + "/" + root.parabolaPicksUpdated.y + "/" + root.parabolaPicksUpdated.z + "\n    " +
+                                    "Colliders:\t" + root.collisionPicksUpdated.x + "/" + root.collisionPicksUpdated.y + "/" + root.collisionPicksUpdated.z
                     }
                 }
             }

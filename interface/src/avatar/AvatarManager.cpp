@@ -232,93 +232,142 @@ void AvatarManager::updateOtherAvatars(float deltaTime) {
     auto avatarMap = getHashCopy();
 
     const auto& views = qApp->getConicalViews();
-    PrioritySortUtil::PriorityQueue<SortableAvatar> sortedAvatars(views,
-            AvatarData::_avatarSortCoefficientSize,
-            AvatarData::_avatarSortCoefficientCenter,
-            AvatarData::_avatarSortCoefficientAge);
-    sortedAvatars.reserve(avatarMap.size() - 1); // don't include MyAvatar
+    // Prepare 2 queues for heros and for crowd avatars
+    using AvatarPriorityQueue = PrioritySortUtil::PriorityQueue<SortableAvatar>;
+    // Keep two independent queues, one for heroes and one for the riff-raff.
+    enum PriorityVariants
+    {
+        kHero = 0,
+        kNonHero,
+        NumVariants
+    };
+    AvatarPriorityQueue avatarPriorityQueues[NumVariants] = {
+             { views,
+               AvatarData::_avatarSortCoefficientSize,
+               AvatarData::_avatarSortCoefficientCenter,
+               AvatarData::_avatarSortCoefficientAge },
+             { views,
+               AvatarData::_avatarSortCoefficientSize,
+               AvatarData::_avatarSortCoefficientCenter,
+               AvatarData::_avatarSortCoefficientAge } };
+    // Reserve space
+    //avatarPriorityQueues[kHero].reserve(10);  // just few
+    avatarPriorityQueues[kNonHero].reserve(avatarMap.size() - 1);  // don't include MyAvatar
 
     // Build vector and compute priorities
     auto nodeList = DependencyManager::get<NodeList>();
     AvatarHash::iterator itr = avatarMap.begin();
     while (itr != avatarMap.end()) {
-        const auto& avatar = std::static_pointer_cast<Avatar>(*itr);
+        auto avatar = std::static_pointer_cast<Avatar>(*itr);
         // DO NOT update _myAvatar!  Its update has already been done earlier in the main loop.
         // DO NOT update or fade out uninitialized Avatars
         if (avatar != _myAvatar && avatar->isInitialized() && !nodeList->isPersonalMutingNode(avatar->getID())) {
-            sortedAvatars.push(SortableAvatar(avatar));
+            if (avatar->getHasPriority()) {
+                avatarPriorityQueues[kHero].push(SortableAvatar(avatar));
+            } else {
+                avatarPriorityQueues[kNonHero].push(SortableAvatar(avatar));
+            }
         }
         ++itr;
     }
-    // Sort
-    const auto& sortedAvatarVector = sortedAvatars.getSortedVector();
+
+    _numHeroAvatars = (int)avatarPriorityQueues[kHero].size();
 
     // process in sorted order
     uint64_t startTime = usecTimestampNow();
-    uint64_t updateExpiry = startTime + MAX_UPDATE_AVATARS_TIME_BUDGET;
+
+    const uint64_t MAX_UPDATE_HEROS_TIME_BUDGET = uint64_t(0.8 * MAX_UPDATE_AVATARS_TIME_BUDGET);
+
+    uint64_t updatePriorityExpiries[NumVariants] = { startTime + MAX_UPDATE_HEROS_TIME_BUDGET, startTime + MAX_UPDATE_AVATARS_TIME_BUDGET };
+    int numHerosUpdated = 0;
     int numAvatarsUpdated = 0;
-    int numAVatarsNotUpdated = 0;
+    int numAvatarsNotUpdated = 0;
 
     render::Transaction renderTransaction;
     workload::Transaction workloadTransaction;
-    for (auto it = sortedAvatarVector.begin(); it != sortedAvatarVector.end(); ++it) {
-        const SortableAvatar& sortData = *it;
-        const auto avatar = std::static_pointer_cast<OtherAvatar>(sortData.getAvatar());
-        if (!avatar->_isClientAvatar) {
-            avatar->setIsClientAvatar(true);
-        }
-        // TODO: to help us scale to more avatars it would be nice to not have to poll this stuff every update
-        if (avatar->getSkeletonModel()->isLoaded()) {
-            // remove the orb if it is there
-            avatar->removeOrb();
-            if (avatar->needsPhysicsUpdate()) {
-                _avatarsToChangeInPhysics.insert(avatar);
-            }
-        } else {
-            avatar->updateOrbPosition();
-        }
+ 
+    for (int p = kHero; p < NumVariants; p++) {
+        auto& priorityQueue = avatarPriorityQueues[p];
+        // Sorting the current queue HERE as part of the measured timing.
+        const auto& sortedAvatarVector = priorityQueue.getSortedVector();
 
-        // for ALL avatars...
-        if (_shouldRender) {
-            avatar->ensureInScene(avatar, qApp->getMain3DScene());
-        }
-        avatar->animateScaleChanges(deltaTime);
+        auto passExpiry = updatePriorityExpiries[p];
 
-        uint64_t now = usecTimestampNow();
-        if (now < updateExpiry) {
-            // we're within budget
-            bool inView = sortData.getPriority() > OUT_OF_VIEW_THRESHOLD;
-            if (inView && avatar->hasNewJointData()) {
-                numAvatarsUpdated++;
+        for (auto it = sortedAvatarVector.begin(); it != sortedAvatarVector.end(); ++it) {
+            const SortableAvatar& sortData = *it;
+            const auto avatar = std::static_pointer_cast<OtherAvatar>(sortData.getAvatar());
+            if (!avatar->_isClientAvatar) {
+                avatar->setIsClientAvatar(true);
             }
-            auto transitStatus = avatar->_transit.update(deltaTime, avatar->_serverPosition, _transitConfig);
-            if (avatar->getIsNewAvatar() && (transitStatus == AvatarTransit::Status::START_TRANSIT || transitStatus == AvatarTransit::Status::ABORT_TRANSIT)) {
-                avatar->_transit.reset();
-                avatar->setIsNewAvatar(false);
-            }
-            avatar->simulate(deltaTime, inView);
-            avatar->updateRenderItem(renderTransaction);
-            avatar->updateSpaceProxy(workloadTransaction);
-            avatar->setLastRenderUpdateTime(startTime);
-        } else {
-            // we've spent our full time budget --> bail on the rest of the avatar updates
-            // --> more avatars may freeze until their priority trickles up
-            // --> some scale animations may glitch
-            // --> some avatar velocity measurements may be a little off
-
-            // no time to simulate, but we take the time to count how many were tragically missed
-            while (it != sortedAvatarVector.end()) {
-                const SortableAvatar& newSortData = *it;
-                const auto& newAvatar = newSortData.getAvatar();
-                bool inView = newSortData.getPriority() > OUT_OF_VIEW_THRESHOLD;
-                // Once we reach an avatar that's not in view, all avatars after it will also be out of view
-                if (!inView) {
-                    break;
+            // TODO: to help us scale to more avatars it would be nice to not have to poll this stuff every update
+            if (avatar->getSkeletonModel()->isLoaded()) {
+                // remove the orb if it is there
+                avatar->removeOrb();
+                if (avatar->needsPhysicsUpdate()) {
+                    _avatarsToChangeInPhysics.insert(avatar);
                 }
-                numAVatarsNotUpdated += (int)(newAvatar->hasNewJointData());
-                ++it;
+            } else {
+                avatar->updateOrbPosition();
             }
-            break;
+
+            // for ALL avatars...
+            if (_shouldRender) {
+                avatar->ensureInScene(avatar, qApp->getMain3DScene());
+            }
+
+            avatar->animateScaleChanges(deltaTime);
+
+            uint64_t now = usecTimestampNow();
+            if (now < passExpiry) {
+                // we're within budget
+                bool inView = sortData.getPriority() > OUT_OF_VIEW_THRESHOLD;
+                if (inView && avatar->hasNewJointData()) {
+                    numAvatarsUpdated++;
+                }
+                auto transitStatus = avatar->_transit.update(deltaTime, avatar->_serverPosition, _transitConfig);
+                if (avatar->getIsNewAvatar() && (transitStatus == AvatarTransit::Status::START_TRANSIT ||
+                                                 transitStatus == AvatarTransit::Status::ABORT_TRANSIT)) {
+                    avatar->_transit.reset();
+                    avatar->setIsNewAvatar(false);
+                }
+                avatar->simulate(deltaTime, inView);
+                if (avatar->getSkeletonModel()->isLoaded() && avatar->getWorkloadRegion() == workload::Region::R1) {
+                    _myAvatar->addAvatarHandsToFlow(avatar);
+                }
+                avatar->updateRenderItem(renderTransaction);
+                avatar->updateSpaceProxy(workloadTransaction);
+                avatar->setLastRenderUpdateTime(startTime);
+            } else {
+                // we've spent our time budget for this priority bucket
+                // let's deal with the reminding avatars if this pass and BREAK from the for loop
+
+                if (p == kHero) {
+                    // Hero,
+                    // --> put them back in the non hero queue
+
+                    auto& crowdQueue = avatarPriorityQueues[kNonHero];
+                    while (it != sortedAvatarVector.end()) {
+                        crowdQueue.push(SortableAvatar((*it).getAvatar()));
+                        ++it;
+                    }
+                } else {
+                    // Non Hero
+                    // --> bail on the rest of the avatar updates
+                    // --> more avatars may freeze until their priority trickles up
+                    // --> some scale animations may glitch
+                    // --> some avatar velocity measurements may be a little off
+
+                    // no time to simulate, but we take the time to count how many were tragically missed
+                    numAvatarsNotUpdated = sortedAvatarVector.end() - it;
+                }
+
+                // We had to cut short this pass, we must break out of the for loop here
+                break;
+            }
+        }
+
+        if (p == kHero) {
+            numHerosUpdated = numAvatarsUpdated;
         }
     }
 
@@ -334,7 +383,8 @@ void AvatarManager::updateOtherAvatars(float deltaTime) {
     _space->enqueueTransaction(workloadTransaction);
 
     _numAvatarsUpdated = numAvatarsUpdated;
-    _numAvatarsNotUpdated = numAVatarsNotUpdated;
+    _numAvatarsNotUpdated = numAvatarsNotUpdated;
+    _numHeroAvatarsUpdated = numHerosUpdated;
 
     simulateAvatarFades(deltaTime);
 
@@ -652,20 +702,13 @@ RayToAvatarIntersectionResult AvatarManager::findRayIntersectionVector(const Pic
 
     PROFILE_RANGE(simulation_physics, __FUNCTION__);
 
-    float distance = (float)INT_MAX;  // with FLT_MAX bullet rayTest does not return results 
+    float bulletDistance = (float)INT_MAX;  // with FLT_MAX bullet rayTest does not return results 
     glm::vec3 rayDirection = glm::normalize(ray.direction);
-    std::vector<MyCharacterController::RayAvatarResult> physicsResults = _myAvatar->getCharacterController()->rayTest(glmToBullet(ray.origin), glmToBullet(rayDirection), distance, QVector<uint>());
+    std::vector<MyCharacterController::RayAvatarResult> physicsResults = _myAvatar->getCharacterController()->rayTest(glmToBullet(ray.origin), glmToBullet(rayDirection), bulletDistance, QVector<uint>());
     if (physicsResults.size() > 0) {
         glm::vec3 rayDirectionInv = { rayDirection.x != 0.0f ? 1.0f / rayDirection.x : INFINITY,
                                       rayDirection.y != 0.0f ? 1.0f / rayDirection.y : INFINITY,
                                       rayDirection.z != 0.0f ? 1.0f / rayDirection.z : INFINITY };
-
-        MyCharacterController::RayAvatarResult rayAvatarResult;
-        AvatarPointer avatar = nullptr;
-        
-        BoxFace face = BoxFace::UNKNOWN_FACE;
-        glm::vec3 surfaceNormal;
-        QVariantMap extraInfo;
 
         for (auto &hit : physicsResults) {
             auto avatarID = hit._intersectWithAvatar;
@@ -673,7 +716,11 @@ RayToAvatarIntersectionResult AvatarManager::findRayIntersectionVector(const Pic
                 (avatarsToDiscard.size() > 0 && avatarsToDiscard.contains(avatarID))) {
                 continue;
             }
-            
+
+            MyCharacterController::RayAvatarResult rayAvatarResult;
+            BoxFace face = BoxFace::UNKNOWN_FACE;
+            QVariantMap extraInfo;
+            AvatarPointer avatar = nullptr;
             if (_myAvatar->getSessionUUID() != avatarID) {
                 auto avatarMap = getHashCopy();
                 AvatarHash::iterator itr = avatarMap.find(avatarID);
@@ -683,46 +730,45 @@ RayToAvatarIntersectionResult AvatarManager::findRayIntersectionVector(const Pic
             } else {
                 avatar = _myAvatar;
             }
+
             if (!hit._isBound) {
                 rayAvatarResult = hit;
             } else if (avatar) {
                 auto &multiSpheres = avatar->getMultiSphereShapes();
                 if (multiSpheres.size() > 0) {
-                    std::vector<MyCharacterController::RayAvatarResult> boxHits;
+                    MyCharacterController::RayAvatarResult boxHit;
+                    boxHit._distance = FLT_MAX;
+
                     for (size_t i = 0; i < hit._boundJoints.size(); i++) {
                         assert(hit._boundJoints[i] < multiSpheres.size());
                         auto &mSphere = multiSpheres[hit._boundJoints[i]];
                         if (mSphere.isValid()) {
                             float boundDistance = FLT_MAX;
-                            BoxFace face;
-                            glm::vec3 surfaceNormal;
+                            BoxFace boundFace = BoxFace::UNKNOWN_FACE;
+                            glm::vec3 boundSurfaceNormal;
                             auto &bbox = mSphere.getBoundingBox();
-                            if (bbox.findRayIntersection(ray.origin, rayDirection, rayDirectionInv, boundDistance, face, surfaceNormal)) {
-                                MyCharacterController::RayAvatarResult boxHit;
-                                boxHit._distance = boundDistance;
-                                boxHit._intersect = true;
-                                boxHit._intersectionNormal = surfaceNormal;
-                                boxHit._intersectionPoint = ray.origin + boundDistance * rayDirection;
-                                boxHit._intersectWithAvatar = avatarID;
-                                boxHit._intersectWithJoint = mSphere.getJointIndex();
-                                boxHits.push_back(boxHit);
+                            if (bbox.findRayIntersection(ray.origin, rayDirection, rayDirectionInv, boundDistance, boundFace, boundSurfaceNormal)) {
+                                if (boundDistance < boxHit._distance) {
+                                    boxHit._intersect = true;
+                                    boxHit._intersectWithAvatar = avatarID;
+                                    boxHit._intersectWithJoint = mSphere.getJointIndex();
+                                    boxHit._distance = boundDistance;
+                                    boxHit._intersectionPoint = ray.origin + boundDistance * rayDirection;
+                                    boxHit._intersectionNormal = boundSurfaceNormal;
+                                    face = boundFace;
+                                }
                             }
                         }
                     }
-                    if (boxHits.size() > 0) {
-                        if (boxHits.size() > 1) {
-                            std::sort(boxHits.begin(), boxHits.end(), [](const MyCharacterController::RayAvatarResult& hitA,
-                                                                            const MyCharacterController::RayAvatarResult& hitB) {
-                                return hitA._distance < hitB._distance;
-                            });
-                        } 
-                        rayAvatarResult = boxHits[0];
+                    if (boxHit._distance < FLT_MAX) {
+                        rayAvatarResult = boxHit;
                     }
                 }
             }
-            if (pickAgainstMesh) {
+
+            if (avatar && rayAvatarResult._intersect && pickAgainstMesh) {
                 glm::vec3 localRayOrigin = avatar->worldToJointPoint(ray.origin, rayAvatarResult._intersectWithJoint);
-                glm::vec3 localRayPoint = avatar->worldToJointPoint(ray.origin + rayDirection, rayAvatarResult._intersectWithJoint);
+                glm::vec3 localRayPoint = avatar->worldToJointPoint(ray.origin + rayAvatarResult._distance * rayDirection, rayAvatarResult._intersectWithJoint);
 
                 auto avatarOrientation = avatar->getWorldOrientation();
                 auto avatarPosition = avatar->getWorldPosition();
@@ -732,31 +778,37 @@ RayToAvatarIntersectionResult AvatarManager::findRayIntersectionVector(const Pic
 
                 auto defaultFrameRayOrigin = jointPosition + jointOrientation * localRayOrigin;
                 auto defaultFrameRayPoint = jointPosition + jointOrientation * localRayPoint;
-                auto defaultFrameRayDirection = defaultFrameRayPoint - defaultFrameRayOrigin;
+                auto defaultFrameRayDirection = glm::normalize(defaultFrameRayPoint - defaultFrameRayOrigin);
 
-                if (avatar->getSkeletonModel()->findRayIntersectionAgainstSubMeshes(defaultFrameRayOrigin, defaultFrameRayDirection, distance, face, surfaceNormal, extraInfo, true, false)) {
-                    auto newDistance = glm::length(vec3FromVariant(extraInfo["worldIntersectionPoint"]) - defaultFrameRayOrigin);
-                    rayAvatarResult._distance = newDistance;
-                    rayAvatarResult._intersectionPoint = ray.origin + newDistance * rayDirection;
-                    rayAvatarResult._intersectionNormal = surfaceNormal;
-                    extraInfo["worldIntersectionPoint"] = vec3toVariant(rayAvatarResult._intersectionPoint);
-                    break;
+                float subMeshDistance = FLT_MAX;
+                BoxFace subMeshFace = BoxFace::UNKNOWN_FACE;
+                glm::vec3 subMeshSurfaceNormal;
+                QVariantMap subMeshExtraInfo;
+                if (avatar->getSkeletonModel()->findRayIntersectionAgainstSubMeshes(defaultFrameRayOrigin, defaultFrameRayDirection, subMeshDistance, subMeshFace, subMeshSurfaceNormal, subMeshExtraInfo, true, false)) {
+                    rayAvatarResult._distance = subMeshDistance;
+                    rayAvatarResult._intersectionPoint = ray.origin + subMeshDistance * rayDirection;
+                    rayAvatarResult._intersectionNormal = subMeshSurfaceNormal;
+                    face = subMeshFace;
+                    extraInfo = subMeshExtraInfo;
+                } else {
+                    rayAvatarResult._intersect = false;
                 }
-            } else if (rayAvatarResult._intersect){
+            }
+
+            if (rayAvatarResult._intersect) {
+                result.intersects = true;
+                result.avatarID = rayAvatarResult._intersectWithAvatar;
+                result.distance = rayAvatarResult._distance;
+                result.face = face;
+                result.intersection = ray.origin + rayAvatarResult._distance * rayDirection;
+                result.surfaceNormal = rayAvatarResult._intersectionNormal;
+                result.jointIndex = rayAvatarResult._intersectWithJoint;
+                result.extraInfo = extraInfo;
                 break;
             }
         }
-        if (rayAvatarResult._intersect) {
-            result.intersects = true;
-            result.avatarID = rayAvatarResult._intersectWithAvatar;
-            result.distance = rayAvatarResult._distance;
-            result.surfaceNormal = rayAvatarResult._intersectionNormal;
-            result.jointIndex = rayAvatarResult._intersectWithJoint;
-            result.intersection = ray.origin + rayAvatarResult._distance * rayDirection;
-            result.extraInfo = extraInfo;
-            result.face = face;
-        }
     }
+
     return result;
 }
 

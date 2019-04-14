@@ -175,7 +175,8 @@ public:
     /// Returns the distance to use as a LOD parameter.
     float getLODDistance() const;
 
-    virtual bool isMyAvatar() const override { return false; }
+    QUuid getMyAvatarID() const;
+
     virtual void createOrb() { }
 
     enum class LoadingStatus {
@@ -235,6 +236,8 @@ public:
     virtual glm::vec3 getAbsoluteJointTranslationInObjectFrame(int index) const override;
     virtual bool setAbsoluteJointRotationInObjectFrame(int index, const glm::quat& rotation) override { return false; }
     virtual bool setAbsoluteJointTranslationInObjectFrame(int index, const glm::vec3& translation) override { return false; }
+    virtual glm::vec3 getSpine2SplineOffset() const { return _spine2SplineOffset; }
+    virtual float getSpine2SplineRatio() const { return _spine2SplineRatio; }
 
     // world-space to avatar-space rigconversion functions
     /**jsdoc
@@ -293,9 +296,6 @@ public:
     virtual void setSessionDisplayName(const QString& sessionDisplayName) override { }; // no-op
 
     virtual int parseDataFromBuffer(const QByteArray& buffer) override;
-
-    static void renderJointConnectingCone(gpu::Batch& batch, glm::vec3 position1, glm::vec3 position2,
-                                               float radius1, float radius2, const glm::vec4& color);
 
     /**jsdoc
      * Set the offset applied to the current avatar. The offset adjusts the position that the avatar is rendered. For example, 
@@ -498,6 +498,8 @@ public:
     const std::vector<MultiSphereShape>& getMultiSphereShapes() const { return _multiSphereShapes; }
     void tearDownGrabs();
 
+    uint32_t appendSubMetaItems(render::ItemIDs& subItems);
+
 signals:
     void targetScaleChanged(float targetScale);
 
@@ -561,7 +563,9 @@ public slots:
 protected:
     float getUnscaledEyeHeightFromSkeleton() const;
     void buildUnscaledEyeHeightCache();
+    void buildSpine2SplineRatioCache();
     void clearUnscaledEyeHeightCache();
+    void clearSpine2SplineRatioCache();
     virtual const QString& getSessionDisplayNameForTransport() const override { return _empty; } // Save a tiny bit of bandwidth. Mixer won't look at what we send.
     QString _empty{};
     virtual void maybeUpdateSessionDisplayNameFromTransport(const QString& sessionDisplayName) override { _sessionDisplayName = sessionDisplayName; } // don't use no-op setter!
@@ -602,7 +606,7 @@ protected:
 
     // protected methods...
     bool isLookingAtMe(AvatarSharedPointer avatar) const;
-    virtual void sendPacket(const QUuid& entityID, const EntityItemProperties& properties) const { }
+    virtual void sendPacket(const QUuid& entityID) const { }
     bool applyGrabChanges();
     void relayJointDataToChildren();
 
@@ -638,8 +642,6 @@ protected:
     RateCounter<> _skeletonModelSimulationRate;
     RateCounter<> _jointDataSimulationRate;
 
-
-protected:
     class AvatarEntityDataHash {
     public:
         AvatarEntityDataHash(uint32_t h) : hash(h) {};
@@ -661,14 +663,14 @@ protected:
     AvatarTransit _transit;
     std::mutex _transitLock;
 
-    static int _jointConesID;
-
     int _voiceSphereID;
 
     float _displayNameTargetAlpha { 1.0f };
     float _displayNameAlpha { 1.0f };
 
     ThreadSafeValueCache<float> _unscaledEyeHeightCache { DEFAULT_AVATAR_EYE_HEIGHT };
+    float _spine2SplineRatio { DEFAULT_SPINE2_SPLINE_PROPORTION };
+    glm::vec3 _spine2SplineOffset;
 
     std::unordered_map<std::string, graphics::MultiMaterial> _materials;
     std::mutex _materialsLock;
@@ -699,6 +701,13 @@ protected:
     MapOfGrabs _avatarGrabs;
     SetOfIDs _grabsToChange; // updated grab IDs -- changes needed to entities or physics
     VectorOfIDs _grabsToDelete; // deleted grab IDs -- changes needed to entities or physics
+
+    ReadWriteLockable _subItemLock;
+    void updateAttachmentRenderIDs();
+    render::ItemIDs _attachmentRenderIDs;
+    void updateDescendantRenderIDs();
+    render::ItemIDs _descendantRenderIDs;
+    uint32_t _lastAncestorChainRenderableVersion { 0 };
 };
 
 #endif // hifi_Avatar_h

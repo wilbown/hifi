@@ -66,6 +66,8 @@ public:
     QString getCompoundShapeURL() const;
     virtual void setCompoundShapeURL(const QString& url);
 
+    virtual bool matchesJSONFilters(const QJsonObject& jsonFilters) const override;
+
     KeyLightPropertyGroup getKeyLightProperties() const { return resultWithReadLock<KeyLightPropertyGroup>([&] { return _keyLightProperties; }); }
     AmbientLightPropertyGroup getAmbientLightProperties() const { return resultWithReadLock<AmbientLightPropertyGroup>([&] { return _ambientLightProperties; }); }
 
@@ -96,13 +98,14 @@ public:
     QString getFilterURL() const;
     void setFilterURL(const QString url); 
 
+    uint32_t getAvatarPriority() const { return _avatarPriority; }
+    void setAvatarPriority(uint32_t value) { _avatarPriority = value; }
+
     bool keyLightPropertiesChanged() const { return _keyLightPropertiesChanged; }
     bool ambientLightPropertiesChanged() const { return _ambientLightPropertiesChanged; }
     bool skyboxPropertiesChanged() const { return _skyboxPropertiesChanged; }
     bool hazePropertiesChanged() const { return _hazePropertiesChanged; }
     bool bloomPropertiesChanged() const { return _bloomPropertiesChanged; }
-
-    bool stagePropertiesChanged() const { return _stagePropertiesChanged; }
 
     void resetRenderingPropertiesChanged();
 
@@ -149,13 +152,15 @@ protected:
     bool _ghostingAllowed { DEFAULT_GHOSTING_ALLOWED };
     QString _filterURL { DEFAULT_FILTER_URL };
 
+    // Avatar-updates priority
+    uint32_t _avatarPriority { COMPONENT_MODE_INHERIT };
+
     // Dirty flags turn true when either keylight properties is changing values.
     bool _keyLightPropertiesChanged { false };
     bool _ambientLightPropertiesChanged { false };
     bool _skyboxPropertiesChanged { false };
     bool _hazePropertiesChanged{ false };
     bool _bloomPropertiesChanged { false };
-    bool _stagePropertiesChanged { false };
 
     static bool _drawZoneBoundaries;
     static bool _zonesArePickable;

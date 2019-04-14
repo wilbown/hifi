@@ -15,7 +15,7 @@
 #include <functional>
 
 #include <gpu/Context.h>
-#include <model-networking/TextureCache.h>
+#include <material-networking/TextureCache.h>
 #include <render/DrawTask.h>
 #include <shaders/Shaders.h>
 #include <graphics/ShaderConstants.h>
@@ -382,11 +382,6 @@ void RenderPipelines::bindMaterial(graphics::MaterialPointer& material, gpu::Bat
 void RenderPipelines::updateMultiMaterial(graphics::MultiMaterial& multiMaterial) {
     auto& schemaBuffer = multiMaterial.getSchemaBuffer();
 
-    if (multiMaterial.size() == 0) {
-        schemaBuffer.edit<graphics::MultiMaterial::Schema>() = graphics::MultiMaterial::Schema();
-        return;
-    }
-
     auto& drawMaterialTextures = multiMaterial.getTextureTable();
     multiMaterial.setTexturesLoading(false);
 
@@ -579,7 +574,7 @@ void RenderPipelines::updateMultiMaterial(graphics::MultiMaterial& multiMaterial
                         } else {
                             forceDefault = true;
                         }
-                        schemaKey.setScattering(true);
+                        schemaKey.setScatteringMap(true);
                     }
                     break;
                 case graphics::MaterialKey::EMISSIVE_MAP_BIT:
@@ -732,14 +727,11 @@ void RenderPipelines::updateMultiMaterial(graphics::MultiMaterial& multiMaterial
     schema._key = (uint32_t)schemaKey._flags.to_ulong();
     schemaBuffer.edit<graphics::MultiMaterial::Schema>() = schema;
     multiMaterial.setNeedsUpdate(false);
+    multiMaterial.setInitialized();
 }
 
 void RenderPipelines::bindMaterials(graphics::MultiMaterial& multiMaterial, gpu::Batch& batch, bool enableTextures) {
-    if (multiMaterial.size() == 0) {
-        return;
-    }
-
-    if (multiMaterial.needsUpdate() || multiMaterial.areTexturesLoading()) {
+    if (multiMaterial.shouldUpdate()) {
         updateMultiMaterial(multiMaterial);
     }
 

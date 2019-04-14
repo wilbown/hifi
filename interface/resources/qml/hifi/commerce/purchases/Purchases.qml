@@ -12,7 +12,7 @@
 //
 
 import Hifi 1.0 as Hifi
-import QtQuick 2.5
+import QtQuick 2.9
 import stylesUit 1.0
 import controlsUit 1.0 as HifiControlsUit
 import "../../../controls" as HifiControls
@@ -29,11 +29,11 @@ Rectangle {
 
     id: root;
     property string activeView: "initialize";
-    property string referrerURL: "";
     property bool securityImageResultReceived: false;
     property bool purchasesReceived: false;
     property bool punctuationMode: false;
     property bool isDebuggingFirstUseTutorial: false;
+    property bool isStandalone: false;
     property string installedApps;
     property bool keyboardRaised: false;
     property int numUpdatesAvailable: 0;
@@ -45,6 +45,7 @@ Rectangle {
         purchasesModel.getFirstPage();
         Commerce.getAvailableUpdates();
     }
+
     Connections {
         target: Commerce;
 
@@ -111,6 +112,10 @@ Rectangle {
         }
     }
 
+    Component.onCompleted: {
+        isStandalone = PlatformInfo.isStandalone();
+    }
+    
     HifiCommerceCommon.CommerceLightbox {
         id: lightboxPopup;
         z: 999;
@@ -154,55 +159,10 @@ Rectangle {
         }
     }
 
-    //
-    // TITLE BAR START
-    //
-    HifiCommerceCommon.EmulatedMarketplaceHeader {
-        id: titleBarContainer;
-        z: 997;
-        visible: false;
-        height: 100;
-        // Size
-        width: parent.width;
-        // Anchors
-        anchors.left: parent.left;
-        anchors.top: parent.top;
-
-        Connections {
-            onSendToParent: {
-                if (msg.method === 'needsLogIn' && root.activeView !== "needsLogIn") {
-                    root.activeView = "needsLogIn";
-                } else if (msg.method === 'showSecurityPicLightbox') {
-                    lightboxPopup.titleText = "Your Security Pic";
-                    lightboxPopup.bodyImageSource = msg.securityImageSource;
-                    lightboxPopup.bodyText = lightboxPopup.securityPicBodyText;
-                    lightboxPopup.button1text = "CLOSE";
-                    lightboxPopup.button1method = function() {
-                        lightboxPopup.visible = false;
-                    }
-                    lightboxPopup.visible = true;
-                } else {
-                    sendToScript(msg);
-                }
-            }
-        }
-    }
-    MouseArea {
-        enabled: titleBarContainer.usernameDropdownVisible;
-        anchors.fill: parent;
-        onClicked: {
-            titleBarContainer.usernameDropdownVisible = false;
-        }
-    }
-    //
-    // TITLE BAR END
-    //
-
     Rectangle {
         id: initialize;
         visible: root.activeView === "initialize";
-        anchors.top: titleBarContainer.bottom;
-        anchors.topMargin: -titleBarContainer.additionalDropdownHeight;
+        anchors.top: parent.top;
         anchors.bottom: parent.bottom;
         anchors.left: parent.left;
         anchors.right: parent.right;
@@ -219,8 +179,7 @@ Rectangle {
         id: installedAppsContainer;
         z: 998;
         visible: false;
-        anchors.top: titleBarContainer.bottom;
-        anchors.topMargin: -titleBarContainer.additionalDropdownHeight;
+        anchors.top: parent.top;
         anchors.left: parent.left;
         anchors.bottom: parent.bottom;
         width: parent.width;
@@ -422,8 +381,8 @@ Rectangle {
         // Anchors
         anchors.left: parent.left;
         anchors.right: parent.right;
-        anchors.top: titleBarContainer.bottom;
-        anchors.topMargin: 8 - titleBarContainer.additionalDropdownHeight;
+        anchors.top: parent.top;
+        anchors.topMargin: 8;
         anchors.bottom: parent.bottom;
 
         //
@@ -564,9 +523,9 @@ Rectangle {
                     item.cardBackVisible = false;
                     item.isInstalled = root.installedApps.indexOf(item.id) > -1;
                     item.wornEntityID = '';
+                    item.upgrade_id = item.upgrade_id ? item.upgrade_id : "";
                 });
                 sendToScript({ method: 'purchases_updateWearables' });
-
                 return data.assets;
             }
         }
@@ -574,6 +533,7 @@ Rectangle {
         ListView {
             id: purchasesContentsList;
             visible: purchasesModel.count !== 0;
+            interactive: !lightboxPopup.visible;
             clip: true;
             model: purchasesModel;
             snapMode: ListView.NoSnap;
@@ -585,6 +545,7 @@ Rectangle {
             delegate: PurchasedItem {
                 itemName: title;
                 itemId: id;
+                updateItemId: model.upgrade_id
                 itemPreviewImageUrl: preview;
                 itemHref: download_url;
                 certificateId: certificate_id;
@@ -596,10 +557,11 @@ Rectangle {
                 cardBackVisible: model.cardBackVisible || false;
                 isInstalled: model.isInstalled || false;
                 wornEntityID: model.wornEntityID;
-                upgradeUrl: model.upgrade_url;
                 upgradeTitle: model.upgrade_title;
                 itemType: model.item_type;
                 valid: model.valid;
+                standaloneOptimized: model.standalone_optimized
+                standaloneIncompatible: root.isStandalone && model.standalone_incompatible
                 anchors.topMargin: 10;
                 anchors.bottomMargin: 10;
 
@@ -654,7 +616,7 @@ Rectangle {
                         } else if (msg.method === "showTrashLightbox") {
                             lightboxPopup.titleText = "Send \"" + msg.itemName + "\" to Trash";
                             lightboxPopup.bodyText = "Sending this item to the Trash means you will no longer own this item " +
-                                "and it will be inaccessible to you from Purchases.\n\nThis action cannot be undone.";
+                                "and it will be inaccessible to you from Inventory.\n\nThis action cannot be undone.";
                             lightboxPopup.button1text = "CANCEL";
                             lightboxPopup.button1method = function() {
                                 lightboxPopup.visible = false;
@@ -715,6 +677,14 @@ Rectangle {
                                 lightboxPopup.bodyText = "You do not have the permission 'Replace Content' in this <b>domain's server settings</b>. The domain owner " +
                                     "must enable it for you before you can replace content sets in this domain.";
                             }
+                            lightboxPopup.button1text = "CLOSE";
+                            lightboxPopup.button1method = function() {
+                                lightboxPopup.visible = false;
+                            }
+                            lightboxPopup.visible = true;
+                        } else if (msg.method === "showStandaloneIncompatibleExplanation") {
+                            lightboxPopup.titleText = "Stand-alone Incompatible";
+                            lightboxPopup.bodyText = "The item is incompatible with stand-alone devices.";
                             lightboxPopup.button1text = "CLOSE";
                             lightboxPopup.button1method = function() {
                                 lightboxPopup.visible = false;
@@ -1083,8 +1053,6 @@ Rectangle {
     function fromScript(message) {
         switch (message.method) {
             case 'updatePurchases':
-                referrerURL = message.referrerURL || "";
-                titleBarContainer.referrerURL = message.referrerURL || "";
                 filterBar.text = message.filterText ? message.filterText : "";
             break;
             case 'purchases_showMyItems':

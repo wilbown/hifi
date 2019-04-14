@@ -251,7 +251,9 @@ public:
 
     void setActiveDisplayPlugin(const QString& pluginName);
 
+#ifndef Q_OS_ANDROID
     FileLogger* getLogger() const { return _logger; }
+#endif
 
     float getRenderResolutionScale() const;
 
@@ -299,10 +301,10 @@ public:
 
     void shareSnapshot(const QString& filename, const QUrl& href = QUrl(""));
 
-    OverlayID getTabletScreenID() const;
-    OverlayID getTabletHomeButtonID() const;
-    QUuid getTabletFrameID() const; // may be an entity or an overlay
-    QVector<QUuid> getTabletIDs() const; // In order of most important IDs first.
+    QUuid getTabletScreenID() const;
+    QUuid getTabletHomeButtonID() const;
+    QUuid getTabletFrameID() const;
+    QVector<QUuid> getTabletIDs() const;
 
     void setAvatarOverrideUrl(const QUrl& url, bool save);
     void clearAvatarOverrideUrl() { _avatarOverrideUrl = QUrl(); _saveAvatarOverrideUrl = false; }
@@ -325,8 +327,8 @@ public:
     void setOtherAvatarsReplicaCount(int count) { DependencyManager::get<AvatarHashMap>()->setReplicaCount(count); }
 
     bool getLoginDialogPoppedUp() const { return _loginDialogPoppedUp; }
-    void createLoginDialogOverlay();
-    void updateLoginDialogOverlayPosition();
+    void createLoginDialog();
+    void updateLoginDialogPosition();
 
     // Check if a headset is connected
     bool hasRiftControllers();
@@ -336,7 +338,8 @@ public:
     void beforeEnterBackground();
     void enterBackground();
     void enterForeground();
-#endif
+    void toggleAwayMode();
+    #endif
 
 signals:
     void svoImportRequested(const QString& url);
@@ -440,10 +443,7 @@ public slots:
     void setKeyboardFocusHighlight(const glm::vec3& position, const glm::quat& rotation, const glm::vec3& dimensions);
 
     QUuid getKeyboardFocusEntity() const;  // thread-safe
-    void setKeyboardFocusEntity(const EntityItemID& entityItemID);
-
-    OverlayID getKeyboardFocusOverlay();
-    void setKeyboardFocusOverlay(const OverlayID& overlayID);
+    void setKeyboardFocusEntity(const QUuid& id);
 
     void addAssetToWorldMessageClose();
 
@@ -534,7 +534,7 @@ private:
     void init();
     void pauseUntilLoginDetermined();
     void resumeAfterLoginDialogActionTaken();
-    bool handleKeyEventForFocusedEntityOrOverlay(QEvent* event);
+    bool handleKeyEventForFocusedEntity(QEvent* event);
     bool handleFileOpenEvent(QFileOpenEvent* event);
     void cleanupBeforeQuit();
 
@@ -593,13 +593,16 @@ private:
     void toggleTabletUI(bool shouldOpen = false) const;
 
     static void setupQmlSurface(QQmlContext* surfaceContext, bool setAdditionalContextProperties);
+    void userKickConfirmation(const QUuid& nodeID);
 
     MainWindow* _window;
     QElapsedTimer& _sessionRunTimer;
 
     bool _aboutToQuit { false };
 
+#ifndef Q_OS_ANDROID
     FileLogger* _logger { nullptr };
+#endif
 
     bool _previousSessionCrashed;
 
@@ -706,7 +709,7 @@ private:
     QString _previousAvatarSkeletonModel;
     float _previousAvatarTargetScale;
     CameraMode _previousCameraMode;
-    OverlayID _loginDialogOverlayID;
+    QUuid _loginDialogID;
     LoginStateManager _loginStateManager;
 
     quint64 _lastFaceTrackerUpdate;
@@ -724,7 +727,6 @@ private:
     DialogsManagerScriptingInterface* _dialogsManagerScriptingInterface = new DialogsManagerScriptingInterface();
 
     ThreadSafeValueCache<EntityItemID> _keyboardFocusedEntity;
-    ThreadSafeValueCache<OverlayID> _keyboardFocusedOverlay;
     quint64 _lastAcceptedKeyPress = 0;
     bool _isForeground = true; // starts out assumed to be in foreground
     bool _isGLInitialized { false };
@@ -732,6 +734,7 @@ private:
     bool _failedToConnectToEntityServer { false };
 
     bool _reticleClickPressed { false };
+    bool _keyboardFocusWaitingOnRenderable { false };
 
     int _avatarAttachmentRequest = 0;
 

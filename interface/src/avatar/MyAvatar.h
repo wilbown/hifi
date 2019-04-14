@@ -66,6 +66,7 @@ class MyAvatar : public Avatar {
      *
      * @hifi-interface
      * @hifi-client-entity
+     * @hifi-avatar
      *
      * @property {Vec3} qmlPosition - A synonym for <code>position</code> for use by QML.
      * @property {boolean} shouldRenderLocally=true - If <code>true</code> then your avatar is rendered for you in Interface,
@@ -137,7 +138,7 @@ class MyAvatar : public Avatar {
      *     your avatar when rolling your HMD in degrees per second.
      * @property {number} userHeight=1.75 - The height of the user in sensor space.
      * @property {number} userEyeHeight=1.65 - The estimated height of the user's eyes in sensor space. <em>Read-only.</em>
-     * @property {Uuid} SELF_ID - UUID representing "my avatar". Only use for local-only entities and overlays in situations 
+     * @property {Uuid} SELF_ID - UUID representing "my avatar". Only use for local-only entities in situations 
      *     where MyAvatar.sessionUUID is not available (e.g., if not connected to a domain). Note: Likely to be deprecated. 
      *     <em>Read-only.</em>
      * @property {number} walkSpeed
@@ -1182,8 +1183,41 @@ public:
     void updateAvatarEntity(const QUuid& entityID, const QByteArray& entityData) override;
     void avatarEntityDataToJson(QJsonObject& root) const override;
     int sendAvatarDataPacket(bool sendAll = false) override;
+    
+    void addAvatarHandsToFlow(const std::shared_ptr<Avatar>& otherAvatar);
+
+    /**jsdoc
+    * Init flow simulation on avatar.
+    * @function MyAvatar.useFlow
+    * @param {boolean} - Set to <code>true</code> to activate flow simulation.
+    * @param {boolean} - Set to <code>true</code> to activate collisions.
+    * @param {Object} physicsConfig - object with the customized physic parameters
+    * i.e. {"hair": {"active": true, "stiffness": 0.0, "radius": 0.04, "gravity": -0.035, "damping": 0.8, "inertia": 0.8, "delta": 0.35}}
+    * @param {Object} collisionsConfig - object with the customized collision parameters
+    * i.e. {"Spine2": {"type": "sphere", "radius": 0.14, "offset": {"x": 0.0, "y": 0.2, "z": 0.0}}}
+    */
+    Q_INVOKABLE void useFlow(bool isActive, bool isCollidable, const QVariantMap& physicsConfig = QVariantMap(), const QVariantMap& collisionsConfig = QVariantMap());
+
+    /**jsdoc
+    * @function MyAvatar.getFlowData
+    * @returns {object}
+    */
+    Q_INVOKABLE QVariantMap getFlowData();
+
+    /**jsdoc
+    * returns the indices of every colliding flow joint
+    * @function MyAvatar.getCollidingFlowJoints
+    * @returns {int[]}
+    */
+    Q_INVOKABLE QVariantList getCollidingFlowJoints();
 
 public slots:
+
+   /**jsdoc
+    * @function MyAvatar.setSessionUUID
+    * @param {Uuid} sessionUUID
+    */
+    virtual void setSessionUUID(const QUuid& sessionUUID) override;
 
     /**jsdoc
      * Increase the avatar's scale by five percent, up to a minimum scale of <code>1000</code>.
@@ -1631,7 +1665,7 @@ private:
     bool getEnableStepResetRotation() const { return _stepResetRotationEnabled; }
     void setEnableDrawAverageFacing(bool drawAverage) { _drawAverageFacingEnabled = drawAverage; }
     bool getEnableDrawAverageFacing() const { return _drawAverageFacingEnabled; }
-    bool isMyAvatar() const override { return true; }
+    virtual bool isMyAvatar() const override { return true; }
     virtual int parseDataFromBuffer(const QByteArray& buffer) override;
     virtual glm::vec3 getSkeletonPosition() const override;
     int _skeletonModelChangeCount { 0 };
@@ -1732,9 +1766,11 @@ private:
     void updateOrientation(float deltaTime);
     void updateActionMotor(float deltaTime);
     void updatePosition(float deltaTime);
+    void updateViewBoom();
     void updateCollisionSound(const glm::vec3& penetration, float deltaTime, float frequency);
     void initHeadBones();
     void initAnimGraph();
+    void initFlowFromFST();
 
     // Avatar Preferences
     QUrl _fullAvatarURLFromPreferences;
@@ -1882,7 +1918,7 @@ private:
     bool didTeleport();
     bool getIsAway() const { return _isAway; }
     void setAway(bool value);
-    void sendPacket(const QUuid& entityID, const EntityItemProperties& properties) const override;
+    void sendPacket(const QUuid& entityID) const override;
 
     std::mutex _pinnedJointsMutex;
     std::vector<int> _pinnedJoints;

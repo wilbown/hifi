@@ -225,6 +225,15 @@ QString EntityItemProperties::getBloomModeAsString() const {
     return getComponentModeAsString(_bloomMode);
 }
 
+namespace {
+    const QStringList AVATAR_PRIORITIES_AS_STRING
+        { "inherit", "crowd", "hero" };
+}
+
+QString EntityItemProperties::getAvatarPriorityAsString() const {
+    return AVATAR_PRIORITIES_AS_STRING.value(_avatarPriority);
+}
+
 std::array<ComponentPair, COMPONENT_MODE_ITEM_COUNT>::const_iterator EntityItemProperties::findComponent(const QString& mode) {
     return std::find_if(COMPONENT_MODES.begin(), COMPONENT_MODES.end(), [&](const ComponentPair& pair) { 
         return (pair.second == mode);
@@ -246,6 +255,15 @@ void EntityItemProperties::setBloomModeFromString(const QString& bloomMode) {
     if (result != COMPONENT_MODES.end()) {
         _bloomMode = result->first;
         _bloomModeChanged = true;
+    }
+}
+
+void EntityItemProperties::setAvatarPriorityFromString(QString const& avatarPriority) {
+    auto result = AVATAR_PRIORITIES_AS_STRING.indexOf(avatarPriority);
+
+    if (result != -1) {
+        _avatarPriority = result;
+        _avatarPriorityChanged = true;
     }
 }
 
@@ -462,6 +480,8 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
 
     // Core
     CHECK_PROPERTY_CHANGE(PROP_SIMULATION_OWNER, simulationOwner);
+    CHECK_PROPERTY_CHANGE(PROP_PARENT_ID, parentID);
+    CHECK_PROPERTY_CHANGE(PROP_PARENT_JOINT_INDEX, parentJointIndex);
     CHECK_PROPERTY_CHANGE(PROP_VISIBLE, visible);
     CHECK_PROPERTY_CHANGE(PROP_NAME, name);
     CHECK_PROPERTY_CHANGE(PROP_LOCKED, locked);
@@ -476,8 +496,6 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_LAST_EDITED_BY, lastEditedBy);
     CHECK_PROPERTY_CHANGE(PROP_ENTITY_HOST_TYPE, entityHostType);
     CHECK_PROPERTY_CHANGE(PROP_OWNING_AVATAR_ID, owningAvatarID);
-    CHECK_PROPERTY_CHANGE(PROP_PARENT_ID, parentID);
-    CHECK_PROPERTY_CHANGE(PROP_PARENT_JOINT_INDEX, parentJointIndex);
     CHECK_PROPERTY_CHANGE(PROP_QUERY_AA_CUBE, queryAACube);
     CHECK_PROPERTY_CHANGE(PROP_CAN_CAST_SHADOW, canCastShadow);
     CHECK_PROPERTY_CHANGE(PROP_VISIBLE_IN_SECONDARY_CAMERA, isVisibleInSecondaryCamera);
@@ -527,6 +545,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_EDITION_NUMBER, editionNumber);
     CHECK_PROPERTY_CHANGE(PROP_ENTITY_INSTANCE_NUMBER, entityInstanceNumber);
     CHECK_PROPERTY_CHANGE(PROP_CERTIFICATE_ID, certificateID);
+    CHECK_PROPERTY_CHANGE(PROP_CERTIFICATE_TYPE, certificateType);
     CHECK_PROPERTY_CHANGE(PROP_STATIC_CERTIFICATE_VERSION, staticCertificateVersion);
 
     // Location data for scripts
@@ -543,6 +562,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_ALPHA, alpha);
     changedProperties += _pulse.getChangedProperties();
     CHECK_PROPERTY_CHANGE(PROP_TEXTURES, textures);
+    CHECK_PROPERTY_CHANGE(PROP_BILLBOARD_MODE, billboardMode);
 
     // Particles
     CHECK_PROPERTY_CHANGE(PROP_MAX_PARTICLES, maxParticles);
@@ -579,6 +599,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
 
     // Model
     CHECK_PROPERTY_CHANGE(PROP_MODEL_URL, modelURL);
+    CHECK_PROPERTY_CHANGE(PROP_MODEL_SCALE, modelScale);
     CHECK_PROPERTY_CHANGE(PROP_JOINT_ROTATIONS_SET, jointRotationsSet);
     CHECK_PROPERTY_CHANGE(PROP_JOINT_ROTATIONS, jointRotations);
     CHECK_PROPERTY_CHANGE(PROP_JOINT_TRANSLATIONS_SET, jointTranslationsSet);
@@ -601,7 +622,6 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_TEXT_ALPHA, textAlpha);
     CHECK_PROPERTY_CHANGE(PROP_BACKGROUND_COLOR, backgroundColor);
     CHECK_PROPERTY_CHANGE(PROP_BACKGROUND_ALPHA, backgroundAlpha);
-    CHECK_PROPERTY_CHANGE(PROP_BILLBOARD_MODE, billboardMode);
     CHECK_PROPERTY_CHANGE(PROP_LEFT_MARGIN, leftMargin);
     CHECK_PROPERTY_CHANGE(PROP_RIGHT_MARGIN, rightMargin);
     CHECK_PROPERTY_CHANGE(PROP_TOP_MARGIN, topMargin);
@@ -621,6 +641,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_SKYBOX_MODE, skyboxMode);
     CHECK_PROPERTY_CHANGE(PROP_HAZE_MODE, hazeMode);
     CHECK_PROPERTY_CHANGE(PROP_BLOOM_MODE, bloomMode);
+    CHECK_PROPERTY_CHANGE(PROP_AVATAR_PRIORITY, avatarPriority);
 
     // Polyvox
     CHECK_PROPERTY_CHANGE(PROP_VOXEL_VOLUME_SIZE, voxelVolumeSize);
@@ -642,6 +663,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
     CHECK_PROPERTY_CHANGE(PROP_SCRIPT_URL, scriptURL);
     CHECK_PROPERTY_CHANGE(PROP_MAX_FPS, maxFPS);
     CHECK_PROPERTY_CHANGE(PROP_INPUT_MODE, inputMode);
+    CHECK_PROPERTY_CHANGE(PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT, showKeyboardFocusHighlight);
 
     // Polyline
     CHECK_PROPERTY_CHANGE(PROP_LINE_POINTS, linePoints);
@@ -945,12 +967,9 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
  */
 
 /**jsdoc
- * The <code>"Material"</code> {@link Entities.EntityType|EntityType} modifies the existing materials on
- * {@link Entities.EntityType|Model} entities, {@link Entities.EntityType|Shape} entities (albedo only), 
- * {@link Overlays.OverlayType|model overlays}, and avatars.
+ * The <code>"Material"</code> {@link Entities.EntityType|EntityType} modifies the existing materials on entities and avatars.
  * It has properties in addition to the common {@link Entities.EntityProperties|EntityProperties}.<br />
- * To apply a material to an entity or overlay, set the material entity's <code>parentID</code> property to the entity or 
- * overlay's ID.
+ * To apply a material to an entity, set the material entity's <code>parentID</code> property to the entity ID.
  * To apply a material to an avatar, set the material entity's <code>parentID</code> property to the avatar's session UUID.
  * To apply a material to your avatar such that it persists across domains and log-ins, create the material as an avatar entity 
  * by setting the <code>entityHostType</code> parameter in {@link Entities.addEntity} to <code>"avatar"</code>.
@@ -1014,6 +1033,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
  * @property {Vec3} dimensions=0.1,0.1,0.1 - The dimensions of the entity. When adding an entity, if no <code>dimensions</code> 
  *     value is specified then the model is automatically sized to its 
  *     <code>{@link Entities.EntityProperties|naturalDimensions}</code>.
+ * @property {Vec3} modelScale - The scale factor applied to the model's dimensions.  Deprecated.
  * @property {Color} color=255,255,255 - <em>Currently not used.</em>
  * @property {string} modelURL="" - The URL of the FBX of OBJ model. Baked FBX models' URLs end in ".baked.fbx".<br />
  * @property {string} textures="" - A JSON string of texture name, URL pairs used when rendering the model in place of the
@@ -1339,6 +1359,10 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
  * @property {Vec3} dimensions=0.1,0.1,0.01 - The dimensions of the entity.
  * @property {Color} color=255,255,255 - The color of the web surface.
  * @property {number} alpha=1 - The alpha of the web surface.
+ * @property {BillboardMode} billboardMode="none" - If <code>"none"</code>, the entity is not billboarded.  If <code>"yaw"</code>, the entity will be
+ *     oriented to follow your camera around the y-axis.  If <code>"full"</code> the entity will be oriented to face your camera.  The following deprecated
+ *     behavior is also supported: you can also set <code>"faceCamera"</code> to <code>true</code> to set <code>billboardMode</code> to "yaw", and you can set
+ *     <code>"isFacingAvatar"</code> to <code>true</code> to set <code>billboardMode</code> to "full".  Setting either to <code>false</code> sets the mode to "none"
  * @property {string} sourceUrl="" - The URL of the Web page to display. This value does not change as you or others navigate 
  *     on the Web entity.
  * @property {number} dpi=30 - The resolution to display the page at, in dots per inch. If you convert this to dots per meter 
@@ -1348,6 +1372,7 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
  * @property {number} maxFPS=10 - The maximum update rate for the Web content, in frames/second.
  * @property {WebInputMode} inputMode="touch" - The user input mode to use.
  * @property {Entities.Pulse} pulse - The pulse-related properties.  Deprecated.
+ * @property {boolean} showKeyboardFocusHighlight - Whether or not to show the keyboard focus highlight when this entity has focus.
  * @example <caption>Create a Web entity displaying at 1920 x 1080 resolution.</caption>
  * var METERS_TO_INCHES = 39.3701;
  * var entity = Entities.addEntity({
@@ -1414,13 +1439,20 @@ EntityPropertyFlags EntityItemProperties::getChangedProperties() const {
  * @property {Entities.Bloom} bloom - The bloom properties of the zone.
  *
  * @property {boolean} flyingAllowed=true - If <code>true</code> then visitors can fly in the zone; otherwise they cannot.
+ *     Only works on domain entities.
  * @property {boolean} ghostingAllowed=true - If <code>true</code> then visitors with avatar collisions turned off will not 
- *     collide with content in the zone; otherwise visitors will always collide with content in the zone.
+ *     collide with content in the zone; otherwise visitors will always collide with content in the zone.  Only works on domain entities.
  
  * @property {string} filterURL="" - The URL of a JavaScript file that filters changes to properties of entities within the 
  *     zone. It is periodically executed for each entity in the zone. It can, for example, be used to not allow changes to 
  *     certain properties.<br />
+ *
+ * @property {string} avatarPriority="inherit" - Configures the update priority of contained avatars to other clients.<br />
+ *     <code>"inherit"</code>: Priority from enclosing zones is unchanged.<br />
+ *     <code>"crowd"</code>: Priority in this zone is the normal priority.<br />
+ *     <code>"hero"</code>: Avatars in this zone will have an increased update priority
  * <pre>
+ *
  * function filter(properties) {
  *     // Test and edit properties object values,
  *     // e.g., properties.modelURL, as required.
@@ -1545,6 +1577,8 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
 
     // Core properties
     //COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_SIMULATION_OWNER, simulationOwner); // not exposed yet
+    COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_PARENT_ID, parentID);
+    COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_PARENT_JOINT_INDEX, parentJointIndex);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_VISIBLE, visible);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_NAME, name);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_LOCKED, locked);
@@ -1559,8 +1593,6 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_LAST_EDITED_BY, lastEditedBy);
     COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_ENTITY_HOST_TYPE, entityHostType, getEntityHostTypeAsString());
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_OWNING_AVATAR_ID, owningAvatarID);
-    COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_PARENT_ID, parentID);
-    COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_PARENT_JOINT_INDEX, parentJointIndex);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_QUERY_AA_CUBE, queryAACube);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_CAN_CAST_SHADOW, canCastShadow);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_VISIBLE_IN_SECONDARY_CAMERA, isVisibleInSecondaryCamera);
@@ -1613,6 +1645,7 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_EDITION_NUMBER, editionNumber);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_ENTITY_INSTANCE_NUMBER, entityInstanceNumber);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_CERTIFICATE_ID, certificateID);
+    COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_CERTIFICATE_TYPE, certificateType);
     COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_STATIC_CERTIFICATE_VERSION, staticCertificateVersion);
 
     // Local props for scripts
@@ -1679,6 +1712,7 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_TEXTURES, textures);
 
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_MODEL_URL, modelURL);
+        COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_MODEL_SCALE, modelScale);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_JOINT_ROTATIONS_SET, jointRotationsSet);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_JOINT_ROTATIONS, jointRotations);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_JOINT_TRANSLATIONS_SET, jointTranslationsSet);
@@ -1718,6 +1752,7 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
     // Text only
     if (_type == EntityTypes::Text) {
         _pulse.copyToScriptValue(_desiredProperties, properties, engine, skipDefaults, defaultEntityProperties);
+        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BILLBOARD_MODE, billboardMode, getBillboardModeAsString());
 
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_TEXT, text);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_LINE_HEIGHT, lineHeight);
@@ -1725,7 +1760,6 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_TEXT_ALPHA, textAlpha);
         COPY_PROPERTY_TO_QSCRIPTVALUE_TYPED(PROP_BACKGROUND_COLOR, backgroundColor, u8vec3Color);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_BACKGROUND_ALPHA, backgroundAlpha);
-        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BILLBOARD_MODE, billboardMode, getBillboardModeAsString());
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_LEFT_MARGIN, leftMargin);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_RIGHT_MARGIN, rightMargin);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_TOP_MARGIN, topMargin);
@@ -1754,6 +1788,7 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_SKYBOX_MODE, skyboxMode, getSkyboxModeAsString());
         COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_HAZE_MODE, hazeMode, getHazeModeAsString());
         COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BLOOM_MODE, bloomMode, getBloomModeAsString());
+        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_AVATAR_PRIORITY, avatarPriority, getAvatarPriorityAsString());
     }
 
     // Web only
@@ -1761,12 +1796,14 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         COPY_PROPERTY_TO_QSCRIPTVALUE_TYPED(PROP_COLOR, color, u8vec3Color);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_ALPHA, alpha);
         _pulse.copyToScriptValue(_desiredProperties, properties, engine, skipDefaults, defaultEntityProperties);
+        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BILLBOARD_MODE, billboardMode, getBillboardModeAsString());
 
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_SOURCE_URL, sourceUrl);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_DPI, dpi);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_SCRIPT_URL, scriptURL);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_MAX_FPS, maxFPS);
         COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_INPUT_MODE, inputMode, getInputModeAsString());
+        COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT, showKeyboardFocusHighlight);
     }
 
     // PolyVoxel only
@@ -1826,11 +1863,11 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         COPY_PROPERTY_TO_QSCRIPTVALUE_TYPED(PROP_COLOR, color, u8vec3Color);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_ALPHA, alpha);
         _pulse.copyToScriptValue(_desiredProperties, properties, engine, skipDefaults, defaultEntityProperties);
+        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BILLBOARD_MODE, billboardMode, getBillboardModeAsString());
 
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_IMAGE_URL, imageURL);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_EMISSIVE, emissive);
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_KEEP_ASPECT_RATIO, keepAspectRatio);
-        COPY_PROPERTY_TO_QSCRIPTVALUE_GETTER(PROP_BILLBOARD_MODE, billboardMode, getBillboardModeAsString());
         COPY_PROPERTY_TO_QSCRIPTVALUE(PROP_SUB_IMAGE, subImage);
 
         // Handle conversions to old 'textures' property from "imageURL"
@@ -1926,7 +1963,7 @@ QScriptValue EntityItemProperties::copyToScriptValue(QScriptEngine* engine, bool
         properties.setProperty("localEntity", convertScriptValue(engine, getEntityHostType() == entity::HostType::LOCAL));
     }
 
-    if (!psuedoPropertyFlagsActive || psueudoPropertyFlags.test(EntityPsuedoPropertyFlag::FaceCamera)) {
+    if (_type != EntityTypes::PolyLine && (!psuedoPropertyFlagsActive || psueudoPropertyFlags.test(EntityPsuedoPropertyFlag::FaceCamera))) {
         properties.setProperty("faceCamera", convertScriptValue(engine, getBillboardMode() == BillboardMode::YAW));
     }
     if (!psuedoPropertyFlagsActive || psueudoPropertyFlags.test(EntityPsuedoPropertyFlag::IsFacingAvatar)) {
@@ -1947,6 +1984,8 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
         // not handled yet
         // COPY_PROPERTY_FROM_QSCRIPTVALUE(simulationOwner, SimulationOwner, setSimulationOwner);
     }
+    COPY_PROPERTY_FROM_QSCRIPTVALUE(parentID, QUuid, setParentID);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE(parentJointIndex, quint16, setParentJointIndex);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(visible, bool, setVisible);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(name, QString, setName);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(locked, bool, setLocked);
@@ -1963,8 +2002,6 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
         COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(entityHostType, EntityHostType);
         COPY_PROPERTY_FROM_QSCRIPTVALUE(owningAvatarID, QUuid, setOwningAvatarID);
     }
-    COPY_PROPERTY_FROM_QSCRIPTVALUE(parentID, QUuid, setParentID);
-    COPY_PROPERTY_FROM_QSCRIPTVALUE(parentJointIndex, quint16, setParentJointIndex);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(queryAACube, AACube, setQueryAACube); // TODO: should scripts be able to set this?
     COPY_PROPERTY_FROM_QSCRIPTVALUE(canCastShadow, bool, setCanCastShadow);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(isVisibleInSecondaryCamera, bool, setIsVisibleInSecondaryCamera);
@@ -2019,6 +2056,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     COPY_PROPERTY_FROM_QSCRIPTVALUE(editionNumber, quint32, setEditionNumber);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(entityInstanceNumber, quint32, setEntityInstanceNumber);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(certificateID, QString, setCertificateID);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE(certificateType, QString, setCertificateType);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(staticCertificateVersion, quint32, setStaticCertificateVersion);
 
     // Script location data
@@ -2035,6 +2073,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     COPY_PROPERTY_FROM_QSCRIPTVALUE(alpha, float, setAlpha);
     _pulse.copyFromScriptValue(object, _defaultSettings);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(textures, QString, setTextures);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(billboardMode, BillboardMode);
 
     // Particles
     COPY_PROPERTY_FROM_QSCRIPTVALUE(maxParticles, quint32, setMaxParticles);
@@ -2071,6 +2110,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
 
     // Model
     COPY_PROPERTY_FROM_QSCRIPTVALUE(modelURL, QString, setModelURL);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE(modelScale, vec3, setModelScale);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(jointRotationsSet, qVectorBool, setJointRotationsSet);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(jointRotations, qVectorQuat, setJointRotations);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(jointTranslationsSet, qVectorBool, setJointTranslationsSet);
@@ -2093,7 +2133,6 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     COPY_PROPERTY_FROM_QSCRIPTVALUE(textAlpha, float, setTextAlpha);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(backgroundColor, u8vec3Color, setBackgroundColor);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(backgroundAlpha, float, setBackgroundAlpha);
-    COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(billboardMode, BillboardMode);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(leftMargin, float, setLeftMargin);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(rightMargin, float, setRightMargin);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(topMargin, float, setTopMargin);
@@ -2113,6 +2152,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(skyboxMode, SkyboxMode);
     COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(hazeMode, HazeMode);
     COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(bloomMode, BloomMode);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(avatarPriority, AvatarPriority);
 
     // Polyvox
     COPY_PROPERTY_FROM_QSCRIPTVALUE(voxelVolumeSize, vec3, setVoxelVolumeSize);
@@ -2134,6 +2174,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     COPY_PROPERTY_FROM_QSCRIPTVALUE(scriptURL, QString, setScriptURL);
     COPY_PROPERTY_FROM_QSCRIPTVALUE(maxFPS, uint8_t, setMaxFPS);
     COPY_PROPERTY_FROM_QSCRIPTVALUE_ENUM(inputMode, InputMode);
+    COPY_PROPERTY_FROM_QSCRIPTVALUE(showKeyboardFocusHighlight, bool, setShowKeyboardFocusHighlight);
 
     // Polyline
     COPY_PROPERTY_FROM_QSCRIPTVALUE(linePoints, qVectorVec3, setLinePoints);
@@ -2193,7 +2234,7 @@ void EntityItemProperties::copyFromScriptValue(const QScriptValue& object, bool 
     }
 
     // Handle old "faceCamera" and "isFacingAvatar" props
-    {
+    if (_type != EntityTypes::PolyLine) {
         QScriptValue P = object.property("faceCamera");
         if (P.isValid() && !object.property("billboardMode").isValid()) {
             bool newValue = P.toVariant().toBool();
@@ -2232,6 +2273,8 @@ void EntityItemProperties::copyFromJSONString(QScriptEngine& scriptEngine, const
 void EntityItemProperties::merge(const EntityItemProperties& other) {
     // Core
     COPY_PROPERTY_IF_CHANGED(simulationOwner);
+    COPY_PROPERTY_IF_CHANGED(parentID);
+    COPY_PROPERTY_IF_CHANGED(parentJointIndex);
     COPY_PROPERTY_IF_CHANGED(visible);
     COPY_PROPERTY_IF_CHANGED(name);
     COPY_PROPERTY_IF_CHANGED(locked);
@@ -2246,8 +2289,6 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(lastEditedBy);
     COPY_PROPERTY_IF_CHANGED(entityHostType);
     COPY_PROPERTY_IF_CHANGED(owningAvatarID);
-    COPY_PROPERTY_IF_CHANGED(parentID);
-    COPY_PROPERTY_IF_CHANGED(parentJointIndex);
     COPY_PROPERTY_IF_CHANGED(queryAACube);
     COPY_PROPERTY_IF_CHANGED(canCastShadow);
     COPY_PROPERTY_IF_CHANGED(isVisibleInSecondaryCamera);
@@ -2297,6 +2338,7 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(editionNumber);
     COPY_PROPERTY_IF_CHANGED(entityInstanceNumber);
     COPY_PROPERTY_IF_CHANGED(certificateID);
+    COPY_PROPERTY_IF_CHANGED(certificateType);
     COPY_PROPERTY_IF_CHANGED(staticCertificateVersion);
 
     // Local props for scripts
@@ -2313,6 +2355,7 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(alpha);
     _pulse.merge(other._pulse);
     COPY_PROPERTY_IF_CHANGED(textures);
+    COPY_PROPERTY_IF_CHANGED(billboardMode);
 
     // Particles
     COPY_PROPERTY_IF_CHANGED(maxParticles);
@@ -2349,6 +2392,7 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
 
     // Model
     COPY_PROPERTY_IF_CHANGED(modelURL);
+    COPY_PROPERTY_IF_CHANGED(modelScale);
     COPY_PROPERTY_IF_CHANGED(jointRotationsSet);
     COPY_PROPERTY_IF_CHANGED(jointRotations);
     COPY_PROPERTY_IF_CHANGED(jointTranslationsSet);
@@ -2371,7 +2415,6 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(textAlpha);
     COPY_PROPERTY_IF_CHANGED(backgroundColor);
     COPY_PROPERTY_IF_CHANGED(backgroundAlpha);
-    COPY_PROPERTY_IF_CHANGED(billboardMode);
     COPY_PROPERTY_IF_CHANGED(leftMargin);
     COPY_PROPERTY_IF_CHANGED(rightMargin);
     COPY_PROPERTY_IF_CHANGED(topMargin);
@@ -2391,6 +2434,7 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(skyboxMode);
     COPY_PROPERTY_IF_CHANGED(hazeMode);
     COPY_PROPERTY_IF_CHANGED(bloomMode);
+    COPY_PROPERTY_IF_CHANGED(avatarPriority);
 
     // Polyvox
     COPY_PROPERTY_IF_CHANGED(voxelVolumeSize);
@@ -2412,6 +2456,7 @@ void EntityItemProperties::merge(const EntityItemProperties& other) {
     COPY_PROPERTY_IF_CHANGED(scriptURL);
     COPY_PROPERTY_IF_CHANGED(maxFPS);
     COPY_PROPERTY_IF_CHANGED(inputMode);
+    COPY_PROPERTY_IF_CHANGED(showKeyboardFocusHighlight);
 
     // Polyline
     COPY_PROPERTY_IF_CHANGED(linePoints);
@@ -2513,6 +2558,8 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
     std::call_once(initMap, []() {
         // Core
         ADD_PROPERTY_TO_MAP(PROP_SIMULATION_OWNER, SimulationOwner, simulationOwner, SimulationOwner);
+        ADD_PROPERTY_TO_MAP(PROP_PARENT_ID, ParentID, parentID, QUuid);
+        ADD_PROPERTY_TO_MAP(PROP_PARENT_JOINT_INDEX, ParentJointIndex, parentJointIndex, uint16_t);
         ADD_PROPERTY_TO_MAP(PROP_VISIBLE, Visible, visible, bool);
         ADD_PROPERTY_TO_MAP(PROP_NAME, Name, name, QString);
         ADD_PROPERTY_TO_MAP(PROP_LOCKED, Locked, locked, bool);
@@ -2528,8 +2575,6 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
         ADD_PROPERTY_TO_MAP(PROP_LAST_EDITED_BY, LastEditedBy, lastEditedBy, QUuid);
         ADD_PROPERTY_TO_MAP(PROP_ENTITY_HOST_TYPE, EntityHostType, entityHostType, entity::HostType);
         ADD_PROPERTY_TO_MAP(PROP_OWNING_AVATAR_ID, OwningAvatarID, owningAvatarID, QUuid);
-        ADD_PROPERTY_TO_MAP(PROP_PARENT_ID, ParentID, parentID, QUuid);
-        ADD_PROPERTY_TO_MAP(PROP_PARENT_JOINT_INDEX, ParentJointIndex, parentJointIndex, uint16_t);
         ADD_PROPERTY_TO_MAP(PROP_QUERY_AA_CUBE, QueryAACube, queryAACube, AACube);
         ADD_PROPERTY_TO_MAP(PROP_CAN_CAST_SHADOW, CanCastShadow, canCastShadow, bool);
         ADD_PROPERTY_TO_MAP(PROP_VISIBLE_IN_SECONDARY_CAMERA, IsVisibleInSecondaryCamera, isVisibleInSecondaryCamera, bool);
@@ -2608,6 +2653,7 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
         ADD_PROPERTY_TO_MAP(PROP_EDITION_NUMBER, EditionNumber, editionNumber, quint32);
         ADD_PROPERTY_TO_MAP(PROP_ENTITY_INSTANCE_NUMBER, EntityInstanceNumber, entityInstanceNumber, quint32);
         ADD_PROPERTY_TO_MAP(PROP_CERTIFICATE_ID, CertificateID, certificateID, QString);
+        ADD_PROPERTY_TO_MAP(PROP_CERTIFICATE_TYPE, CertificateType, certificateType, QString);
         ADD_PROPERTY_TO_MAP(PROP_STATIC_CERTIFICATE_VERSION, StaticCertificateVersion, staticCertificateVersion, quint32);
 
         // Local script props
@@ -2631,6 +2677,7 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
             ADD_GROUP_PROPERTY_TO_MAP(PROP_PULSE_ALPHA_MODE, Pulse, pulse, AlphaMode, alphaMode);
         }
         ADD_PROPERTY_TO_MAP(PROP_TEXTURES, Textures, textures, QString);
+        ADD_PROPERTY_TO_MAP(PROP_BILLBOARD_MODE, BillboardMode, billboardMode, BillboardMode);
 
         // Particles
         ADD_PROPERTY_TO_MAP_WITH_RANGE(PROP_MAX_PARTICLES, MaxParticles, maxParticles, quint32, 
@@ -2691,6 +2738,7 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
 
         // Model
         ADD_PROPERTY_TO_MAP(PROP_MODEL_URL, ModelURL, modelURL, QString);
+        ADD_PROPERTY_TO_MAP(PROP_MODEL_SCALE, ModelScale, modelScale, vec3);
         ADD_PROPERTY_TO_MAP(PROP_JOINT_ROTATIONS_SET, JointRotationsSet, jointRotationsSet, QVector<bool>);
         ADD_PROPERTY_TO_MAP(PROP_JOINT_ROTATIONS, JointRotations, jointRotations, QVector<quat>);
         ADD_PROPERTY_TO_MAP(PROP_JOINT_TRANSLATIONS_SET, JointTranslationsSet, jointTranslationsSet, QVector<bool>);
@@ -2724,7 +2772,6 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
         ADD_PROPERTY_TO_MAP(PROP_TEXT_ALPHA, TextAlpha, textAlpha, float);
         ADD_PROPERTY_TO_MAP(PROP_BACKGROUND_COLOR, BackgroundColor, backgroundColor, u8vec3Color);
         ADD_PROPERTY_TO_MAP(PROP_BACKGROUND_ALPHA, BackgroundAlpha, backgroundAlpha, float);
-        ADD_PROPERTY_TO_MAP(PROP_BILLBOARD_MODE, BillboardMode, billboardMode, BillboardMode);
         ADD_PROPERTY_TO_MAP(PROP_LEFT_MARGIN, LeftMargin, leftMargin, float);
         ADD_PROPERTY_TO_MAP(PROP_RIGHT_MARGIN, RightMargin, rightMargin, float);
         ADD_PROPERTY_TO_MAP(PROP_TOP_MARGIN, TopMargin, topMargin, float);
@@ -2775,6 +2822,7 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
         ADD_PROPERTY_TO_MAP(PROP_SKYBOX_MODE, SkyboxMode, skyboxMode, uint32_t);
         ADD_PROPERTY_TO_MAP(PROP_HAZE_MODE, HazeMode, hazeMode, uint32_t);
         ADD_PROPERTY_TO_MAP(PROP_BLOOM_MODE, BloomMode, bloomMode, uint32_t);
+        ADD_PROPERTY_TO_MAP(PROP_AVATAR_PRIORITY, AvatarPriority, avatarPriority, uint32_t);
 
         // Polyvox
         ADD_PROPERTY_TO_MAP(PROP_VOXEL_VOLUME_SIZE, VoxelVolumeSize, voxelVolumeSize, vec3);
@@ -2796,6 +2844,7 @@ bool EntityItemProperties::getPropertyInfo(const QString& propertyName, EntityPr
         ADD_PROPERTY_TO_MAP(PROP_SCRIPT_URL, ScriptURL, scriptURL, QString);
         ADD_PROPERTY_TO_MAP(PROP_MAX_FPS, MaxFPS, maxFPS, uint8_t);
         ADD_PROPERTY_TO_MAP(PROP_INPUT_MODE, InputMode, inputMode, WebInputMode);
+        ADD_PROPERTY_TO_MAP(PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT, ShowKeyboardFocusHighlight, showKeyboardFocusHighlight, bool);
 
         // Polyline
         ADD_PROPERTY_TO_MAP(PROP_LINE_POINTS, LinePoints, linePoints, QVector<vec3>);
@@ -2983,6 +3032,8 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
 
 
             APPEND_ENTITY_PROPERTY(PROP_SIMULATION_OWNER, properties._simulationOwner.toByteArray());
+            APPEND_ENTITY_PROPERTY(PROP_PARENT_ID, properties.getParentID());
+            APPEND_ENTITY_PROPERTY(PROP_PARENT_JOINT_INDEX, properties.getParentJointIndex());
             APPEND_ENTITY_PROPERTY(PROP_VISIBLE, properties.getVisible());
             APPEND_ENTITY_PROPERTY(PROP_NAME, properties.getName());
             APPEND_ENTITY_PROPERTY(PROP_LOCKED, properties.getLocked());
@@ -2997,8 +3048,6 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
             APPEND_ENTITY_PROPERTY(PROP_LAST_EDITED_BY, properties.getLastEditedBy());
             // APPEND_ENTITY_PROPERTY(PROP_ENTITY_HOST_TYPE, (uint32_t)properties.getEntityHostType());              // not sent over the wire
             // APPEND_ENTITY_PROPERTY(PROP_OWNING_AVATAR_ID, properties.getOwningAvatarID());                        // not sent over the wire
-            APPEND_ENTITY_PROPERTY(PROP_PARENT_ID, properties.getParentID());
-            APPEND_ENTITY_PROPERTY(PROP_PARENT_JOINT_INDEX, properties.getParentJointIndex());
             APPEND_ENTITY_PROPERTY(PROP_QUERY_AA_CUBE, properties.getQueryAACube());
             APPEND_ENTITY_PROPERTY(PROP_CAN_CAST_SHADOW, properties.getCanCastShadow());
             // APPEND_ENTITY_PROPERTY(PROP_VISIBLE_IN_SECONDARY_CAMERA, properties.getIsVisibleInSecondaryCamera()); // not sent over the wire
@@ -3050,6 +3099,7 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
             APPEND_ENTITY_PROPERTY(PROP_EDITION_NUMBER, properties.getEditionNumber());
             APPEND_ENTITY_PROPERTY(PROP_ENTITY_INSTANCE_NUMBER, properties.getEntityInstanceNumber());
             APPEND_ENTITY_PROPERTY(PROP_CERTIFICATE_ID, properties.getCertificateID());
+            APPEND_ENTITY_PROPERTY(PROP_CERTIFICATE_TYPE, properties.getCertificateType());
             APPEND_ENTITY_PROPERTY(PROP_STATIC_CERTIFICATE_VERSION, properties.getStaticCertificateVersion());
 
             if (properties.getType() == EntityTypes::ParticleEffect) {
@@ -3109,6 +3159,7 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 APPEND_ENTITY_PROPERTY(PROP_TEXTURES, properties.getTextures());
 
                 APPEND_ENTITY_PROPERTY(PROP_MODEL_URL, properties.getModelURL());
+                APPEND_ENTITY_PROPERTY(PROP_MODEL_SCALE, properties.getModelScale());
                 APPEND_ENTITY_PROPERTY(PROP_JOINT_ROTATIONS_SET, properties.getJointRotationsSet());
                 APPEND_ENTITY_PROPERTY(PROP_JOINT_ROTATIONS, properties.getJointRotations());
                 APPEND_ENTITY_PROPERTY(PROP_JOINT_TRANSLATIONS_SET, properties.getJointTranslationsSet());
@@ -3133,6 +3184,7 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 _staticPulse.setProperties(properties);
                 _staticPulse.appendToEditPacket(packetData, requestedProperties, propertyFlags,
                     propertiesDidntFit, propertyCount, appendState);
+                APPEND_ENTITY_PROPERTY(PROP_BILLBOARD_MODE, (uint32_t)properties.getBillboardMode());
 
                 APPEND_ENTITY_PROPERTY(PROP_TEXT, properties.getText());
                 APPEND_ENTITY_PROPERTY(PROP_LINE_HEIGHT, properties.getLineHeight());
@@ -3140,7 +3192,6 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 APPEND_ENTITY_PROPERTY(PROP_TEXT_ALPHA, properties.getTextAlpha());
                 APPEND_ENTITY_PROPERTY(PROP_BACKGROUND_COLOR, properties.getBackgroundColor());
                 APPEND_ENTITY_PROPERTY(PROP_BACKGROUND_ALPHA, properties.getBackgroundAlpha());
-                APPEND_ENTITY_PROPERTY(PROP_BILLBOARD_MODE, (uint32_t)properties.getBillboardMode());
                 APPEND_ENTITY_PROPERTY(PROP_LEFT_MARGIN, properties.getLeftMargin());
                 APPEND_ENTITY_PROPERTY(PROP_RIGHT_MARGIN, properties.getRightMargin());
                 APPEND_ENTITY_PROPERTY(PROP_TOP_MARGIN, properties.getTopMargin());
@@ -3175,6 +3226,7 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 APPEND_ENTITY_PROPERTY(PROP_SKYBOX_MODE, (uint32_t)properties.getSkyboxMode());
                 APPEND_ENTITY_PROPERTY(PROP_HAZE_MODE, (uint32_t)properties.getHazeMode());
                 APPEND_ENTITY_PROPERTY(PROP_BLOOM_MODE, (uint32_t)properties.getBloomMode());
+                APPEND_ENTITY_PROPERTY(PROP_AVATAR_PRIORITY, (uint32_t)properties.getAvatarPriority());
             }
 
             if (properties.getType() == EntityTypes::PolyVox) {
@@ -3198,12 +3250,14 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 _staticPulse.setProperties(properties);
                 _staticPulse.appendToEditPacket(packetData, requestedProperties, propertyFlags,
                     propertiesDidntFit, propertyCount, appendState);
+                APPEND_ENTITY_PROPERTY(PROP_BILLBOARD_MODE, (uint32_t)properties.getBillboardMode());
 
                 APPEND_ENTITY_PROPERTY(PROP_SOURCE_URL, properties.getSourceUrl());
                 APPEND_ENTITY_PROPERTY(PROP_DPI, properties.getDPI());
                 APPEND_ENTITY_PROPERTY(PROP_SCRIPT_URL, properties.getScriptURL());
                 APPEND_ENTITY_PROPERTY(PROP_MAX_FPS, properties.getMaxFPS());
                 APPEND_ENTITY_PROPERTY(PROP_INPUT_MODE, (uint32_t)properties.getInputMode());
+                APPEND_ENTITY_PROPERTY(PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT, properties.getShowKeyboardFocusHighlight());
             }
 
             if (properties.getType() == EntityTypes::Line) {
@@ -3258,11 +3312,11 @@ OctreeElement::AppendState EntityItemProperties::encodeEntityEditPacket(PacketTy
                 _staticPulse.setProperties(properties);
                 _staticPulse.appendToEditPacket(packetData, requestedProperties, propertyFlags,
                     propertiesDidntFit, propertyCount, appendState);
+                APPEND_ENTITY_PROPERTY(PROP_BILLBOARD_MODE, (uint32_t)properties.getBillboardMode());
 
                 APPEND_ENTITY_PROPERTY(PROP_IMAGE_URL, properties.getImageURL());
                 APPEND_ENTITY_PROPERTY(PROP_EMISSIVE, properties.getEmissive());
                 APPEND_ENTITY_PROPERTY(PROP_KEEP_ASPECT_RATIO, properties.getKeepAspectRatio());
-                APPEND_ENTITY_PROPERTY(PROP_BILLBOARD_MODE, (uint32_t)properties.getBillboardMode());
                 APPEND_ENTITY_PROPERTY(PROP_SUB_IMAGE, properties.getSubImage());
             }
 
@@ -3460,6 +3514,8 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
     processedBytes += propertyFlags.getEncodedLength();
 
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SIMULATION_OWNER, QByteArray, setSimulationOwner);
+    READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_PARENT_ID, QUuid, setParentID);
+    READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_PARENT_JOINT_INDEX, quint16, setParentJointIndex);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_VISIBLE, bool, setVisible);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_NAME, QString, setName);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_LOCKED, bool, setLocked);
@@ -3474,8 +3530,6 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_LAST_EDITED_BY, QUuid, setLastEditedBy);
     // READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_ENTITY_HOST_TYPE, entity::HostType, setEntityHostType);            // not sent over the wire
     // READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_OWNING_AVATAR_ID, QUuid, setOwningAvatarID);                       // not sent over the wire
-    READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_PARENT_ID, QUuid, setParentID);
-    READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_PARENT_JOINT_INDEX, quint16, setParentJointIndex);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_QUERY_AA_CUBE, AACube, setQueryAACube);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_CAN_CAST_SHADOW, bool, setCanCastShadow);
     // READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_VISIBLE_IN_SECONDARY_CAMERA, bool, setIsVisibleInSecondaryCamera); // not sent over the wire
@@ -3525,6 +3579,7 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_EDITION_NUMBER, quint32, setEditionNumber);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_ENTITY_INSTANCE_NUMBER, quint32, setEntityInstanceNumber);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_CERTIFICATE_ID, QString, setCertificateID);
+    READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_CERTIFICATE_TYPE, QString, setCertificateType);
     READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_STATIC_CERTIFICATE_VERSION, quint32, setStaticCertificateVersion);
 
     if (properties.getType() == EntityTypes::ParticleEffect) {
@@ -3582,6 +3637,7 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_TEXTURES, QString, setTextures);
 
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_MODEL_URL, QString, setModelURL);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_MODEL_SCALE, vec3, setModelScale);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_JOINT_ROTATIONS_SET, QVector<bool>, setJointRotationsSet);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_JOINT_ROTATIONS, QVector<quat>, setJointRotations);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_JOINT_TRANSLATIONS_SET, QVector<bool>, setJointTranslationsSet);
@@ -3604,6 +3660,7 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
 
     if (properties.getType() == EntityTypes::Text) {
         properties.getPulse().decodeFromEditPacket(propertyFlags, dataAt, processedBytes);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BILLBOARD_MODE, BillboardMode, setBillboardMode);
 
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_TEXT, QString, setText);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_LINE_HEIGHT, float, setLineHeight);
@@ -3611,7 +3668,6 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_TEXT_ALPHA, float, setTextAlpha);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BACKGROUND_COLOR, u8vec3Color, setBackgroundColor);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BACKGROUND_ALPHA, float, setBackgroundAlpha);
-        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BILLBOARD_MODE, BillboardMode, setBillboardMode);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_LEFT_MARGIN, float, setLeftMargin);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_RIGHT_MARGIN, float, setRightMargin);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_TOP_MARGIN, float, setTopMargin);
@@ -3637,6 +3693,7 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SKYBOX_MODE, uint32_t, setSkyboxMode);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_HAZE_MODE, uint32_t, setHazeMode);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BLOOM_MODE, uint32_t, setBloomMode);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_AVATAR_PRIORITY, uint32_t, setAvatarPriority);
     }
 
     if (properties.getType() == EntityTypes::PolyVox) {
@@ -3658,12 +3715,14 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_COLOR, u8vec3Color, setColor);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_ALPHA, float, setAlpha);
         properties.getPulse().decodeFromEditPacket(propertyFlags, dataAt, processedBytes);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BILLBOARD_MODE, BillboardMode, setBillboardMode);
 
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SOURCE_URL, QString, setSourceUrl);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_DPI, uint16_t, setDPI);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SCRIPT_URL, QString, setScriptURL);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_MAX_FPS, uint8_t, setMaxFPS);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_INPUT_MODE, WebInputMode, setInputMode);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SHOW_KEYBOARD_FOCUS_HIGHLIGHT, bool, setShowKeyboardFocusHighlight);
     }
 
     if (properties.getType() == EntityTypes::Line) {
@@ -3715,11 +3774,11 @@ bool EntityItemProperties::decodeEntityEditPacket(const unsigned char* data, int
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_COLOR, u8vec3Color, setColor);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_ALPHA, float, setAlpha);
         properties.getPulse().decodeFromEditPacket(propertyFlags, dataAt, processedBytes);
+        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BILLBOARD_MODE, BillboardMode, setBillboardMode);
 
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_IMAGE_URL, QString, setImageURL);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_EMISSIVE, bool, setEmissive);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_KEEP_ASPECT_RATIO, bool, setKeepAspectRatio);
-        READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_BILLBOARD_MODE, BillboardMode, setBillboardMode);
         READ_ENTITY_PROPERTY_TO_PROPERTIES(PROP_SUB_IMAGE, QRect, setSubImage);
     }
 
@@ -3865,6 +3924,8 @@ bool EntityItemProperties::decodeCloneEntityMessage(const QByteArray& buffer, in
 void EntityItemProperties::markAllChanged() {
     // Core
     _simulationOwnerChanged = true;
+    _parentIDChanged = true;
+    _parentJointIndexChanged = true;
     _visibleChanged = true;
     _nameChanged = true;
     _lockedChanged = true;
@@ -3879,8 +3940,6 @@ void EntityItemProperties::markAllChanged() {
     _lastEditedByChanged = true;
     _entityHostTypeChanged = true;
     _owningAvatarIDChanged = true;
-    _parentIDChanged = true;
-    _parentJointIndexChanged = true;
     _queryAACubeChanged = true;
     _canCastShadowChanged = true;
     _isVisibleInSecondaryCameraChanged = true;
@@ -3930,15 +3989,17 @@ void EntityItemProperties::markAllChanged() {
     _editionNumberChanged = true;
     _entityInstanceNumberChanged = true;
     _certificateIDChanged = true;
+    _certificateTypeChanged = true;
     _staticCertificateVersionChanged = true;
 
     // Common
     _shapeTypeChanged = true;
+    _compoundShapeURLChanged = true;
     _colorChanged = true;
     _alphaChanged = true;
     _pulse.markAllChanged();
     _texturesChanged = true;
-    _compoundShapeURLChanged = true;
+    _billboardModeChanged = true;
 
     // Particles
     _maxParticlesChanged = true;
@@ -3975,6 +4036,7 @@ void EntityItemProperties::markAllChanged() {
 
     // Model
     _modelURLChanged = true;
+    _modelScaleChanged = true;
     _jointRotationsSetChanged = true;
     _jointRotationsChanged = true;
     _jointTranslationsSetChanged = true;
@@ -3997,7 +4059,6 @@ void EntityItemProperties::markAllChanged() {
     _textAlphaChanged = true;
     _backgroundColorChanged = true;
     _backgroundAlphaChanged = true;
-    _billboardModeChanged = true;
     _leftMarginChanged = true;
     _rightMarginChanged = true;
     _topMarginChanged = true;
@@ -4017,6 +4078,7 @@ void EntityItemProperties::markAllChanged() {
     _skyboxModeChanged = true;
     _hazeModeChanged = true;
     _bloomModeChanged = true;
+    _avatarPriorityChanged = true;
 
     // Polyvox
     _voxelVolumeSizeChanged = true;
@@ -4038,6 +4100,7 @@ void EntityItemProperties::markAllChanged() {
     _scriptURLChanged = true;
     _maxFPSChanged = true;
     _inputModeChanged = true;
+    _showKeyboardFocusHighlightChanged = true;
 
     // Polyline
     _linePointsChanged = true;
@@ -4154,7 +4217,7 @@ void EntityItemProperties::copySimulationRestrictedProperties(const EntityItemPo
         setAcceleration(entity->getAcceleration());
     }
     if (!_localDimensionsChanged && !_dimensionsChanged) {
-        setDimensions(entity->getScaledDimensions());
+        setLocalDimensions(entity->getScaledDimensions());
     }
 }
 
@@ -4211,6 +4274,12 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     if (simulationOwnerChanged()) {
         out += "simulationOwner";
     }
+    if (parentIDChanged()) {
+        out += "parentID";
+    }
+    if (parentJointIndexChanged()) {
+        out += "parentJointIndex";
+    }
     if (visibleChanged()) {
         out += "visible";
     }
@@ -4252,12 +4321,6 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     }
     if (owningAvatarIDChanged()) {
         out += "owningAvatarID";
-    }
-    if (parentIDChanged()) {
-        out += "parentID";
-    }
-    if (parentJointIndexChanged()) {
-        out += "parentJointIndex";
     }
     if (queryAACubeChanged()) {
         out += "queryAACube";
@@ -4388,6 +4451,9 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     if (certificateIDChanged()) {
         out += "certificateID";
     }
+    if (certificateTypeChanged()) {
+        out += "certificateType";
+    }
     if (staticCertificateVersionChanged()) {
         out += "staticCertificateVersion";
     }
@@ -4408,6 +4474,9 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     getPulse().listChangedProperties(out);
     if (texturesChanged()) {
         out += "textures";
+    }
+    if (billboardModeChanged()) {
+        out += "billboardMode";
     }
 
     // Particles
@@ -4509,6 +4578,9 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     if (modelURLChanged()) {
         out += "modelURL";
     }
+    if (modelScaleChanged()) {
+        out += "scale";
+    }
     if (jointRotationsSetChanged()) {
         out += "jointRotationsSet";
     }
@@ -4565,9 +4637,6 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     if (backgroundAlphaChanged()) {
         out += "backgroundAlpha";
     }
-    if (billboardModeChanged()) {
-        out += "billboardMode";
-    }
     if (leftMarginChanged()) {
         out += "leftMargin";
     }
@@ -4610,6 +4679,9 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     }
     if (bloomModeChanged()) {
         out += "bloomMode";
+    }
+    if (avatarPriorityChanged()) {
+        out += "avatarPriority";
     }
 
     // Polyvox
@@ -4688,6 +4760,9 @@ QList<QString> EntityItemProperties::listChangedProperties() {
     }
     if (faceCameraChanged()) {
         out += "faceCamera";
+    }
+    if (showKeyboardFocusHighlightChanged()) {
+        out += "showKeyboardFocusHighlight";
     }
 
     // Shape
@@ -4814,6 +4889,9 @@ QByteArray EntityItemProperties::getStaticCertificateJSON() const {
 
     if (!getAnimation().getURL().isEmpty()) {
         json["animationURL"] = getAnimation().getURL();
+    }
+    if (staticCertificateVersion >= 3) {
+        ADD_STRING_PROPERTY(certificateType, CertificateType);
     }
     ADD_STRING_PROPERTY(collisionSoundURL, CollisionSoundURL);
     ADD_STRING_PROPERTY(compoundShapeURL, CompoundShapeURL);

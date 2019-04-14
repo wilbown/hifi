@@ -16,8 +16,6 @@
 #include <workload/Space.h>
 
 #include "InterfaceLogging.h"
-#include "ui/overlays/Overlays.h"
-#include "ui/overlays/Sphere3DOverlay.h"
 
 class AvatarManager;
 class AvatarMotionState;
@@ -50,6 +48,7 @@ public:
     void rebuildCollisionShape() override;
 
     void setWorkloadRegion(uint8_t region);
+    uint8_t getWorkloadRegion() { return _workloadRegion; }
     bool shouldBeInPhysicsSimulation() const;
     bool needsPhysicsUpdate() const;
 
@@ -87,8 +86,7 @@ protected:
     MapOfAvatarEntityDataHashes _avatarEntityDataHashes;
 
     std::vector<QUuid> _attachedAvatarEntities;
-    std::shared_ptr<Sphere3DOverlay> _otherAvatarOrbMeshPlaceholder { nullptr };
-    OverlayID _otherAvatarOrbMeshPlaceholderID { UNKNOWN_OVERLAY_ID };
+    QUuid _otherAvatarOrbMeshPlaceholderID;
     AvatarMotionState* _motionState { nullptr };
     std::vector<DetailedMotionState*> _detailedMotionStates;
     int32_t _spaceIndex { -1 };

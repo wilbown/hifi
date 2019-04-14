@@ -428,6 +428,13 @@ const GROUPS = [
                 propertyID: "bloom.bloomSize",
                 showPropertyRule: { "bloomMode": "enabled" },
             },
+            {
+                label: "Avatar Priority",
+                type: "dropdown",
+                options: { inherit: "Inherit", crowd: "Crowd", hero: "Hero" },
+                propertyID: "avatarPriority",
+            },
+
         ]
     },
     {
@@ -1485,6 +1492,8 @@ const ENTITY_SCRIPT_STATUS = {
     unloaded: "Unloaded"
 };
 
+const ENABLE_DISABLE_SELECTOR = "input, textarea, span, .dropdown dl, .color-picker";
+
 const PROPERTY_NAME_DIVISION = {
     GROUP: 0,
     PROPERTY: 1,
@@ -1584,8 +1593,7 @@ function disableChildren(el, selector) {
 }
 
 function enableProperties() {
-    enableChildren(document.getElementById("properties-list"),
-                   "input, textarea, checkbox, .dropdown dl, .color-picker , .draggable-number.text");
+    enableChildren(document.getElementById("properties-list"), ENABLE_DISABLE_SELECTOR);
     enableChildren(document, ".colpick");
     
     let elLocked = getPropertyInputElement("locked");
@@ -1596,8 +1604,7 @@ function enableProperties() {
 }
 
 function disableProperties() {
-    disableChildren(document.getElementById("properties-list"),
-                    "input, textarea, checkbox, .dropdown dl, .color-picker, .draggable-number.text");
+    disableChildren(document.getElementById("properties-list"), ENABLE_DISABLE_SELECTOR);
     disableChildren(document, ".colpick");
     for (let pickKey in colorPickers) {
         colorPickers[pickKey].colpickHide();
@@ -2328,7 +2335,7 @@ function createTextureProperty(property, elProperty) {
     elInput.setAttribute("id", elementID);
     elInput.setAttribute("type", "text"); 
     
-    let imageLoad = _.debounce(function (url) {
+    let imageLoad = function(url) {
         if (url.slice(0, 5).toLowerCase() === "atp:/") {
             elImage.src = "";
             elImage.style.display = "none";
@@ -2348,15 +2355,12 @@ function createTextureProperty(property, elProperty) {
             elDiv.classList.remove("no-preview");
             elDiv.classList.add("no-texture");
         }
-    }, IMAGE_DEBOUNCE_TIMEOUT);
-    elInput.imageLoad = imageLoad;
-    elInput.oninput = function (event) {
-        // Add throttle
-        let url = event.target.value;
-        imageLoad(url);
-        updateProperty(property.name, url, property.isParticleProperty)
     };
-    elInput.onchange = elInput.oninput;
+    elInput.imageLoad = imageLoad;
+    elInput.addEventListener('change', createEmitTextPropertyUpdateFunction(property));
+    elInput.addEventListener('change', function(ev) {
+        imageLoad(ev.target.value);
+    });
 
     elProperty.appendChild(elInput);
     elProperty.appendChild(elDiv);
@@ -3018,6 +3022,13 @@ function toggleDropdown(event) {
     element.setAttribute("dropped", isDropped !== "true" ? "true" : "false");
 }
 
+function closeAllDropdowns() {
+    elDropdowns = document.querySelectorAll("div.dropdown > dl");
+    for (let i = 0; i < elDropdowns.length; ++i) {
+        elDropdowns[i].setAttribute('dropped', 'false');
+    }
+}
+
 function setDropdownValue(event) {
     let dt = event.target.parentNode.parentNode.previousSibling;
     dt.value = event.target.getAttribute("value");
@@ -3314,6 +3325,13 @@ function loaded() {
                         }
 
                         let hasSelectedEntityChanged = lastEntityID !== '"' + selectedEntityProperties.id + '"';
+
+                        if (!data.isPropertiesToolUpdate && !hasSelectedEntityChanged && document.hasFocus()) {
+                            // in case the selection has not changed and we still have focus on the properties page,
+                            // we will ignore the event.
+                            return;
+                        }
+
                         let doSelectElement = !hasSelectedEntityChanged;
 
                         // the event bridge and json parsing handle our avatar id string differently.
@@ -3345,8 +3363,8 @@ function loaded() {
                                 let shouldHide = selectedEntityProperties.certificateID !== "";
                                 if (shouldHide) {
                                     propertyValue = "** Certified **";
+                                    property.elInput.disabled = true;
                                 }
-                                property.elInput.disabled = shouldHide;
                             }
                             
                             let isPropertyNotNumber = false;
@@ -3780,6 +3798,8 @@ function loaded() {
             property.elInput = dt;
             dt.addEventListener('change', createEmitTextPropertyUpdateFunction(property));
         }
+
+        document.addEventListener('click', function(ev) { closeAllDropdowns() }, true);
         
         elDropdowns = document.getElementsByTagName("select");
         while (elDropdowns.length > 0) {

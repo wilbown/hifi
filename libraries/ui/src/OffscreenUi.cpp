@@ -36,6 +36,7 @@
  * 
  * @hifi-interface
  * @hifi-client-entity
+ * @hifi-avatar
  * @property {boolean} navigationFocused
  * @property {boolean} navigationFocusDisabled
  */
@@ -237,6 +238,12 @@ class MessageBoxListener : public ModalDialogListener {
     virtual QMessageBox::StandardButton waitForButtonResult() {
         ModalDialogListener::waitForResult();
         return static_cast<QMessageBox::StandardButton>(_result.toInt());
+    }
+
+protected slots:
+    virtual void onDestroyed() override {
+        ModalDialogListener::onDestroyed();
+        onSelected(QMessageBox::NoButton);
     }
 
 private slots:
