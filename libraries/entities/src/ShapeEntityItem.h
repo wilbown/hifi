@@ -72,7 +72,7 @@ public:
                                                 EntityPropertyFlags& propertyFlags, bool overwriteLocalData,
                                                 bool& somethingChanged) override;
 
-    entity::Shape getShape() const { return _shape; }
+    entity::Shape getShape() const;
     void setShape(const entity::Shape& shape);
     void setShape(const QString& shape) { setShape(entity::shapeFromString(shape)); }
 
@@ -83,8 +83,6 @@ public:
     void setColor(const glm::u8vec3& value);
 
     void setUnscaledDimensions(const glm::vec3& value) override;
-
-    bool shouldBePhysical() const override { return !isDead(); }
 
     bool supportsDetailedIntersection() const override;
     bool findDetailedRayIntersection(const glm::vec3& origin, const glm::vec3& direction,
@@ -112,7 +110,7 @@ protected:
     //! This is SHAPE_TYPE_ELLIPSOID rather than SHAPE_TYPE_NONE to maintain
     //! prior functionality where new or unsupported shapes are treated as
     //! ellipsoids.
-    ShapeType _collisionShapeType{ ShapeType::SHAPE_TYPE_ELLIPSOID };
+    ShapeType _collisionShapeType { ShapeType::SHAPE_TYPE_ELLIPSOID };
 };
 
 #endif // hifi_ShapeEntityItem_h

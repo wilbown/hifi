@@ -29,6 +29,7 @@
 #include <AbstractAudioInterface.h>
 #include <AudioEffectOptions.h>
 #include <AudioStreamStats.h>
+#include <shared/WebRTC.h>
 
 #include <DependencyManager.h>
 #include <HifiSockAddr.h>
@@ -181,6 +182,8 @@ public:
     bool isHeadsetPluggedIn() { return _isHeadsetPluggedIn; }
 #endif
 
+    int getNumLocalInjectors();
+
 public slots:
     void start();
     void stop();
@@ -213,6 +216,9 @@ public slots:
     void setWarnWhenMuted(bool isNoiseGateEnabled, bool emitSignal = true);
     bool isWarnWhenMutedEnabled() const { return _warnWhenMuted; }
 
+    void setAcousticEchoCancellation(bool isAECEnabled, bool emitSignal = true);
+    bool isAcousticEchoCancellationEnabled() const { return _isAECEnabled; }
+
     virtual bool getLocalEcho() override { return _shouldEchoLocally; }
     virtual void setLocalEcho(bool localEcho) override { _shouldEchoLocally = localEcho; }
     virtual void toggleLocalEcho() override { _shouldEchoLocally = !_shouldEchoLocally; }
@@ -240,6 +246,10 @@ public slots:
     void setReverb(bool reverb);
     void setReverbOptions(const AudioEffectOptions* options);
 
+    void setLocalInjectorGain(float gain) { _localInjectorGain = gain; };
+    void setSystemInjectorGain(float gain) { _systemInjectorGain = gain; };
+    void setOutputGain(float gain) { _outputGain = gain; };
+
     void outputNotify();
 
     void loadSettings();
@@ -250,6 +260,7 @@ signals:
     void muteToggled(bool muted);
     void noiseReductionChanged(bool noiseReductionEnabled);
     void warnWhenMutedChanged(bool warnWhenMutedEnabled);
+    void acousticEchoCancellationChanged(bool acousticEchoCancellationEnabled);
     void mutedByMixer();
     void inputReceived(const QByteArray& inputSamples);
     void inputLoudnessChanged(float loudness, bool isClipping);
@@ -334,6 +345,7 @@ private:
     QIODevice* _inputDevice;
     int _numInputCallbackBytes;
     QAudioOutput* _audioOutput;
+    std::atomic<bool> _audioOutputInitialized { false };
     QAudioFormat _desiredOutputFormat;
     QAudioFormat _outputFormat;
     int _outputFrameSize;
@@ -370,6 +382,7 @@ private:
     bool _shouldEchoToServer;
     bool _isNoiseGateEnabled;
     bool _warnWhenMuted;
+    bool _isAECEnabled;
 
     bool _reverb;
     AudioEffectOptions _scriptReverbOptions;
@@ -383,6 +396,7 @@ private:
     AudioSRC* _inputToNetworkResampler;
     AudioSRC* _networkToOutputResampler;
     AudioSRC* _localToOutputResampler;
+    AudioSRC* _loopbackResampler;
 
     // for network audio (used by network audio thread)
     int16_t _networkScratchBuffer[AudioConstants::NETWORK_FRAME_SAMPLES_AMBISONIC];
@@ -391,8 +405,12 @@ private:
     int _outputPeriod { 0 };
     float* _outputMixBuffer { NULL };
     int16_t* _outputScratchBuffer { NULL };
+    std::atomic<float> _outputGain { 1.0f };
+    float _lastOutputGain { 1.0f };
 
     // for local audio (used by audio injectors thread)
+    std::atomic<float> _localInjectorGain { 1.0f };
+    std::atomic<float> _systemInjectorGain { 1.0f };
     float _localMixBuffer[AudioConstants::NETWORK_FRAME_SAMPLES_STEREO];
     int16_t _localScratchBuffer[AudioConstants::NETWORK_FRAME_SAMPLES_AMBISONIC];
     float* _localOutputMixBuffer { NULL };
@@ -402,8 +420,22 @@ private:
     // Adds Reverb
     void configureReverb();
     void updateReverbOptions();
-
     void handleLocalEchoAndReverb(QByteArray& inputByteArray);
+
+#if defined(WEBRTC_ENABLED)
+    static const int WEBRTC_SAMPLE_RATE_MAX = 96000;
+    static const int WEBRTC_CHANNELS_MAX = 2;
+    static const int WEBRTC_FRAMES_MAX = webrtc::AudioProcessing::kChunkSizeMs * WEBRTC_SAMPLE_RATE_MAX / 1000;
+
+    webrtc::AudioProcessing* _apm { nullptr };
+
+    int16_t _fifoFarEnd[WEBRTC_CHANNELS_MAX * WEBRTC_FRAMES_MAX] {};
+    int _numFifoFarEnd = 0; // numFrames saved in fifo
+
+    void configureWebrtc();
+    void processWebrtcFarEnd(const int16_t* samples, int numFrames, int numChannels, int sampleRate);
+    void processWebrtcNearEnd(int16_t* samples, int numFrames, int numChannels, int sampleRate);
+#endif
 
     bool switchInputToAudioDevice(const QAudioDeviceInfo inputDeviceInfo, bool isShutdownRequest = false);
     bool switchOutputToAudioDevice(const QAudioDeviceInfo outputDeviceInfo, bool isShutdownRequest = false);

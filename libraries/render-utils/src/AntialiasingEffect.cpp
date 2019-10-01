@@ -26,7 +26,7 @@
 #include "ViewFrustum.h"
 #include "GeometryCache.h"
 #include "FramebufferCache.h"
-
+#include "RandomAndNoise.h"
 
 namespace ru {
     using render_utils::slot::texture::Texture;
@@ -139,6 +139,11 @@ void Antialiasing::run(const render::RenderContextPointer& renderContext, const 
 }
 #else
 
+void AntialiasingConfig::setAAMode(int mode) {
+    _mode = std::min((int)AntialiasingConfig::MODE_COUNT, std::max(0, mode));
+    emit dirty();
+}
+
 Antialiasing::Antialiasing(bool isSharpenEnabled) : 
     _isSharpenEnabled{ isSharpenEnabled } {
 }
@@ -189,6 +194,8 @@ const gpu::PipelinePointer& Antialiasing::getDebugBlendPipeline() {
 }
 
 void Antialiasing::configure(const Config& config) {
+    _mode = (AntialiasingConfig::Mode) config.getAAMode();
+
     _sharpen = config.sharpen * 0.25f;
     if (!_isSharpenEnabled) {
         _sharpen = 0.0f;
@@ -298,29 +305,33 @@ void Antialiasing::run(const render::RenderContextPointer& renderContext, const 
     });
 }
 
-
 void JitterSampleConfig::setIndex(int current) {
     _index = (current) % JitterSample::SEQUENCE_LENGTH;    
     emit dirty();
 }
 
-int JitterSampleConfig::cycleStopPauseRun() {
-    _state = (_state + 1) % 3;
+void JitterSampleConfig::setState(int state) {
+    _state = (state) % 3;
     switch (_state) {
-        case 0: {
-            return none();
-            break;
-        }
-        case 1: {
-            return pause();
-            break;
-        }
-        case 2:
-        default: {
-            return play();
-            break;
-        }
+    case 0: {
+        none();
+        break;
     }
+    case 1: {
+        pause();
+        break;
+    }
+    case 2:
+    default: {
+        play();
+        break;
+    }
+    }
+    emit dirty();
+}
+
+int JitterSampleConfig::cycleStopPauseRun() {
+    setState((_state + 1) % 3);
     return _state;
 }
 
@@ -359,36 +370,11 @@ int JitterSampleConfig::play() {
     return _state;
 }
 
-template <int B> 
-class Halton {
-public:
-
-    float eval(int index) const {
-        float f = 1.0f;
-        float r = 0.0f;
-        float invB = 1.0f / (float)B;
-        index++; // Indices start at 1, not 0
-
-        while (index > 0) {
-            f = f * invB;
-            r = r + f * (float)(index % B);
-            index = index / B;
-
-        }
-
-        return r;
-    }
-
-};
-
-
 JitterSample::SampleSequence::SampleSequence(){
     // Halton sequence (2,3)
-    Halton<2> genX;
-    Halton<3> genY;
 
     for (int i = 0; i < SEQUENCE_LENGTH; i++) {
-        offsets[i] = glm::vec2(genX.eval(i), genY.eval(i));
+        offsets[i] = glm::vec2(halton::evaluate<2>(i), halton::evaluate<3>(i));
         offsets[i] -= vec2(0.5f);
     }
     offsets[SEQUENCE_LENGTH] = glm::vec2(0.0f);
@@ -403,6 +389,8 @@ void JitterSample::configure(const Config& config) {
         }
     } else if (config.stop) {
         _sampleSequence.currentIndex = -1;
+    } else {
+        _sampleSequence.currentIndex = config.getIndex();
     }
     _scale = config.scale;
 }
@@ -417,10 +405,10 @@ void JitterSample::run(const render::RenderContextPointer& renderContext, Output
         }
     }
 
-    jitter.x = 0.0f;
-    jitter.y = 0.0f;
     if (current >= 0) {
         jitter = _sampleSequence.offsets[current];
+    } else {
+        jitter = glm::vec2(0.0f);
     }
 }
 

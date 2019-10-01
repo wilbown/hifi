@@ -38,6 +38,7 @@
 
 #include <QtScriptTools/QScriptEngineDebugger>
 
+#include <shared/LocalFileAccessGate.h>
 #include <shared/QtHelpers.h>
 #include <AudioConstants.h>
 #include <AudioEffectOptions.h>
@@ -165,7 +166,7 @@ ScriptEnginePointer scriptEngineFactory(ScriptEngine::Context context,
                                                  const QString& scriptContents,
                                                  const QString& fileNameString) {
     ScriptEngine* engine = new ScriptEngine(context, scriptContents, fileNameString);
-    ScriptEnginePointer engineSP = ScriptEnginePointer(engine);
+    ScriptEnginePointer engineSP = ScriptEnginePointer(engine, &QObject::deleteLater);
     auto scriptEngines = DependencyManager::get<ScriptEngines>();
     scriptEngines->addScriptEngine(qSharedPointerCast<ScriptEngine>(engineSP));
     engine->setScriptEngines(scriptEngines);
@@ -226,7 +227,7 @@ ScriptEngine::ScriptEngine(Context context, const QString& scriptContents, const
     if (_type == Type::ENTITY_CLIENT || _type == Type::ENTITY_SERVER) {
         QObject::connect(this, &ScriptEngine::update, this, [this]() {
             // process pending entity script content
-            if (!_contentAvailableQueue.empty()) {
+            if (!_contentAvailableQueue.empty() && !(_isFinished || _isStopping)) {
                 EntityScriptContentAvailableMap pending;
                 std::swap(_contentAvailableQueue, pending);
                 for (auto& pair : pending) {
@@ -262,19 +263,14 @@ bool ScriptEngine::isDebugMode() const {
 #endif
 }
 
-ScriptEngine::~ScriptEngine() {
-    QSharedPointer<ScriptEngines> scriptEngines(_scriptEngines);
-    if (scriptEngines) {
-        scriptEngines->removeScriptEngine(qSharedPointerCast<ScriptEngine>(sharedFromThis()));
-    }
-}
+ScriptEngine::~ScriptEngine() {}
 
 void ScriptEngine::disconnectNonEssentialSignals() {
     disconnect();
     QThread* workerThread;
     // Ensure the thread should be running, and does exist
     if (_isRunning && _isThreaded && (workerThread = thread())) {
-        connect(this, &ScriptEngine::doneRunning, workerThread, &QThread::quit);
+        connect(this, &QObject::destroyed, workerThread, &QThread::quit);
         connect(workerThread, &QThread::finished, workerThread, &QObject::deleteLater);
     }
 }
@@ -350,7 +346,7 @@ void ScriptEngine::runDebuggable() {
         // we check for 'now' in the past in case people set their clock back
         if (_lastUpdate < now) {
             float deltaTime = (float)(now - _lastUpdate) / (float)USECS_PER_SECOND;
-            if (!_isFinished) {
+            if (!(_isFinished || _isStopping)) {
                 emit update(deltaTime);
             }
         }
@@ -388,7 +384,7 @@ void ScriptEngine::runInThread() {
     // the script engine, make sure to add code to "reconnect" them to the
     // disconnectNonEssentialSignals() method
     connect(workerThread, &QThread::started, this, &ScriptEngine::run);
-    connect(this, &ScriptEngine::doneRunning, workerThread, &QThread::quit);
+    connect(this, &QObject::destroyed, workerThread, &QThread::quit);
     connect(workerThread, &QThread::finished, workerThread, &QObject::deleteLater);
 
     workerThread->start();
@@ -404,15 +400,47 @@ void ScriptEngine::executeOnScriptThread(std::function<void()> function, const Q
 }
 
 void ScriptEngine::waitTillDoneRunning() {
+    // Engine should be stopped already, but be defensive
+    stop();
+    
     auto workerThread = thread();
-
+    
+    if (workerThread == QThread::currentThread()) {
+        qCWarning(scriptengine) << "ScriptEngine::waitTillDoneRunning called, but the script is on the same thread:" << getFilename();
+        return;
+    }
+    
     if (_isThreaded && workerThread) {
         // We should never be waiting (blocking) on our own thread
         assert(workerThread != QThread::currentThread());
 
-        // Engine should be stopped already, but be defensive
-        stop();
+#ifdef Q_OS_MAC
+        // On mac, don't call QCoreApplication::processEvents() here. This is to prevent
+        // [NSApplication terminate:] from prematurely destroying the static destructors
+        // while we are waiting for the scripts to shutdown. We will pump the message
+        // queue later in the Application destructor.
+        if (workerThread->isRunning()) {
+            workerThread->quit();
 
+            if (isEvaluating()) {
+                qCWarning(scriptengine) << "Script Engine has been running too long, aborting:" << getFilename();
+                abortEvaluation();
+            } else {
+                auto context = currentContext();
+                if (context) {
+                    qCWarning(scriptengine) << "Script Engine has been running too long, throwing:" << getFilename();
+                    context->throwError("Timed out during shutdown");
+                }
+            }
+
+            // Wait for the scripting thread to stop running, as
+            // flooding it with aborts/exceptions will persist it longer
+            static const auto MAX_SCRIPT_QUITTING_TIME = 0.5 * MSECS_PER_SECOND;
+            if (!workerThread->wait(MAX_SCRIPT_QUITTING_TIME)) {
+                workerThread->terminate();
+            }
+        }
+#else
         auto startedWaiting = usecTimestampNow();
         while (workerThread->isRunning()) {
             // If the final evaluation takes too long, then tell the script engine to stop running
@@ -425,9 +453,9 @@ void ScriptEngine::waitTillDoneRunning() {
                     qCWarning(scriptengine) << "Script Engine has been running too long, aborting:" << getFilename();
                     abortEvaluation();
                 } else {
-                    qCWarning(scriptengine) << "Script Engine has been running too long, throwing:" << getFilename();
                     auto context = currentContext();
                     if (context) {
+                        qCWarning(scriptengine) << "Script Engine has been running too long, throwing:" << getFilename();
                         context->throwError("Timed out during shutdown");
                     }
                 }
@@ -450,6 +478,7 @@ void ScriptEngine::waitTillDoneRunning() {
             // Avoid a pure busy wait
             QThread::yieldCurrentThread();
         }
+#endif
 
         scriptInfoMessage("Script Engine has stopped:" + getFilename());
     }
@@ -586,6 +615,8 @@ static void scriptableResourceFromScriptValue(const QScriptValue& value, Scripta
 }
 
 /**jsdoc
+ * The <code>Resource</code> API provides values that define the possible loading states of a resource.
+ *
  * @namespace Resource
  *
  * @hifi-interface
@@ -594,7 +625,7 @@ static void scriptableResourceFromScriptValue(const QScriptValue& value, Scripta
  * @hifi-server-entity
  * @hifi-assignment-client
  *
- * @property {Resource.State} State
+ * @property {Resource.State} State - The possible loading states of a resource. <em>Read-only.</em>
  */
 static QScriptValue createScriptableResourcePrototype(ScriptEnginePointer engine) {
     auto prototype = engine->newObject();
@@ -993,6 +1024,31 @@ void ScriptEngine::addEventHandler(const EntityItemID& entityID, const QString& 
             };
         };
 
+        /**jsdoc
+         * The name of an entity event. When the entity event occurs, any function that has been registered for that event via 
+         * {@link Script.addEventHandler} is called with parameters per the entity event.
+         * <table>
+         *   <thead>
+         *     <tr><th>Event Name</th><th>Entity Event</th></tr>
+         *   </thead>
+         *   <tbody>
+         *     <tr><td><code>"enterEntity"</code></td><td>{@link Entities.enterEntity}</td></tr>
+         *     <tr><td><code>"leaveEntity"</code></td><td>{@link Entities.leaveEntity}</td></tr>
+         *     <tr><td><code>"mousePressOnEntity"</code></td><td>{@link Entities.mousePressOnEntity}</td></tr>
+         *     <tr><td><code>"mouseMoveOnEntity"</code></td><td>{@link Entities.mouseMoveOnEntity}</td></tr>
+         *     <tr><td><code>"mouseReleaseOnEntity"</code></td><td>{@link Entities.mouseReleaseOnEntity}</td></tr>
+         *     <tr><td><code>"clickDownOnEntity"</code></td><td>{@link Entities.clickDownOnEntity}</td></tr>
+         *     <tr><td><code>"holdingClickOnEntity"</code></td><td>{@link Entities.holdingClickOnEntity}</td></tr>
+         *     <tr><td><code>"clickReleaseOnEntity"</code></td><td>{@link Entities.clickReleaseOnEntity}</td></tr>
+         *     <tr><td><code>"hoverEnterEntity"</code></td><td>{@link Entities.hoverEnterEntity}</td></tr>
+         *     <tr><td><code>"hoverOverEntity"</code></td><td>{@link Entities.hoverOverEntity}</td></tr>
+         *     <tr><td><code>"hoverLeaveEntity"</code></td><td>{@link Entities.hoverLeaveEntity}</td></tr>
+         *     <tr><td><code>"collisionWithEntity"</code></td><td>{@link Entities.collisionWithEntity}</td></tr>
+         *   </tbody>
+         * </table>
+         *
+         * @typedef {string} Script.EntityEvent
+         */
         connect(entities.data(), &EntityScriptingInterface::enterEntity, this, makeSingleEntityHandler("enterEntity"));
         connect(entities.data(), &EntityScriptingInterface::leaveEntity, this, makeSingleEntityHandler("leaveEntity"));
 
@@ -1071,6 +1127,12 @@ QScriptValue ScriptEngine::evaluate(const QString& sourceCode, const QString& fi
 }
 
 void ScriptEngine::run() {
+    if (QThread::currentThread() != qApp->thread() && _context == Context::CLIENT_SCRIPT) {
+        // Flag that we're allowed to access local HTML files on UI created from C++ calls on this thread
+        // (because we're a client script)
+        hifi::scripting::setLocalAccessSafeThread(true);
+    }
+
     auto filenameParts = _fileNameString.split("/");
     auto name = filenameParts.size() > 0 ? filenameParts[filenameParts.size() - 1] : "unknown";
     PROFILE_SET_THREAD_NAME("Script: " + name);
@@ -1248,6 +1310,9 @@ void ScriptEngine::run() {
 
     emit finished(_fileNameString, qSharedPointerCast<ScriptEngine>(sharedFromThis()));
 
+    // Don't leave our local-file-access flag laying around, reset it to false when the scriptengine 
+    // thread is finished
+    hifi::scripting::setLocalAccessSafeThread(false);
     _isRunning = false;
     emit runningStateChanged();
     emit doneRunning();
@@ -1327,7 +1392,10 @@ void ScriptEngine::callAnimationStateHandler(QScriptValue callback, AnimVariantM
 
 void ScriptEngine::updateMemoryCost(const qint64& deltaSize) {
     if (deltaSize > 0) {
+        // We've patched qt to fix https://highfidelity.atlassian.net/browse/BUGZ-46 on mac and windows only.
+#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
         reportAdditionalMemoryCost(deltaSize);
+#endif
     }
 }
 
@@ -2153,9 +2221,9 @@ void ScriptEngine::loadEntityScript(const EntityItemID& entityID, const QString&
 }
 
 /**jsdoc
- * Triggered when the script starts for a user.
+ * Triggered when the script starts for a user. See also, {@link Script.entityScriptPreloadFinished}.
  * <p>Note: Can only be connected to via <code>this.preload = function (...) { ... }</code> in the entity script.</p>
- * <table><tr><th>Available in:</th><td>Client Entity Scripts</td><td>Server Entity Scripts</td></tr></table>
+ * <p class="availableIn"><strong>Supported Script Types:</strong> Client Entity Scripts &bull; Server Entity Scripts</p>
  * @function Entities.preload
  * @param {Uuid} entityID - The ID of the entity that the script is running in.
  * @returns {Signal}
@@ -2167,7 +2235,7 @@ void ScriptEngine::loadEntityScript(const EntityItemID& entityID, const QString&
  *         this.entityID = entityID;
  *         print("Entity ID: " + this.entityID);
  *     };
- * );
+ * });
  *
  * var entityID = Entities.addEntity({
  *     type: "Box",
@@ -2178,6 +2246,7 @@ void ScriptEngine::loadEntityScript(const EntityItemID& entityID, const QString&
  *     lifetime: 300  // Delete after 5 minutes.
  * });
  */
+// The JSDoc is for the callEntityScriptMethod() call in this method.
 // since all of these operations can be asynch we will always do the actual work in the response handler
 // for the download
 void ScriptEngine::entityScriptContentAvailable(const EntityItemID& entityID, const QString& scriptOrURL, const QString& contents, bool isURL, bool success , const QString& status) {
@@ -2360,10 +2429,12 @@ void ScriptEngine::entityScriptContentAvailable(const EntityItemID& entityID, co
 /**jsdoc
  * Triggered when the script terminates for a user.
  * <p>Note: Can only be connected to via <code>this.unoad = function () { ... }</code> in the entity script.</p>
- * <table><tr><th>Available in:</th><td>Client Entity Scripts</td><td>Server Entity Scripts</td></tr></table>
+ * <p class="availableIn"><strong>Supported Script Types:</strong> Client Entity Scripts &bull; Server Entity Scripts</p>
  * @function Entities.unload
+ * @param {Uuid} entityID - The ID of the entity that the script is running in.
  * @returns {Signal}
  */
+// The JSDoc is for the callEntityScriptMethod() call in this method.
 void ScriptEngine::unloadEntityScript(const EntityItemID& entityID, bool shouldRemoveFromMap) {
     if (QThread::currentThread() != thread()) {
 #ifdef THREAD_DEBUGGING
@@ -2418,13 +2489,14 @@ QList<EntityItemID> ScriptEngine::getListOfEntityScriptIDs() {
     return _entityScripts.keys();
 }
 
-void ScriptEngine::unloadAllEntityScripts() {
+void ScriptEngine::unloadAllEntityScripts(bool blockingCall) {
     if (QThread::currentThread() != thread()) {
 #ifdef THREAD_DEBUGGING
         qCDebug(scriptengine) << "*** WARNING *** ScriptEngine::unloadAllEntityScripts() called on wrong thread [" << QThread::currentThread() << "], invoking on correct thread [" << thread() << "]";
 #endif
 
-        QMetaObject::invokeMethod(this, "unloadAllEntityScripts");
+        QMetaObject::invokeMethod(this, "unloadAllEntityScripts",
+            blockingCall ? Qt::BlockingQueuedConnection : Qt::QueuedConnection);
         return;
     }
 #ifdef THREAD_DEBUGGING

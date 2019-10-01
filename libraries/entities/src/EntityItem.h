@@ -23,6 +23,7 @@
 #include <OctreeElement.h> // for OctreeElement::AppendState
 #include <OctreePacketData.h>
 #include <PhysicsCollisionGroups.h>
+#include <SimulationFlags.h>
 #include <ShapeInfo.h>
 #include <Transform.h>
 #include <SpatiallyNestable.h>
@@ -33,11 +34,11 @@
 #include "EntityPropertyFlags.h"
 #include "EntityTypes.h"
 #include "SimulationOwner.h"
-#include "SimulationFlags.h"
 #include "EntityDynamicInterface.h"
 #include "GrabPropertyGroup.h"
 
 class EntitySimulation;
+using EntitySimulationPointer = std::shared_ptr<EntitySimulation>;
 class EntityTreeElement;
 class EntityTreeElementExtraEncodeData;
 class EntityDynamicInterface;
@@ -124,8 +125,8 @@ public:
         { return (float)(usecTimestampNow() - getLastEdited()) / (float)USECS_PER_SECOND; }
 
     /// Last time we sent out an edit packet for this entity
-    quint64 getLastBroadcast() const;
-    void setLastBroadcast(quint64 lastBroadcast);
+    quint64 getLastBroadcast() const { return _lastBroadcast; }
+    void setLastBroadcast(quint64 lastBroadcast) { _lastBroadcast = lastBroadcast; }
 
     void markAsChangedOnServer();
     quint64 getLastChangedOnServer() const;
@@ -133,7 +134,8 @@ public:
     virtual EntityPropertyFlags getEntityProperties(EncodeBitstreamParams& params) const;
 
     virtual OctreeElement::AppendState appendEntityData(OctreePacketData* packetData, EncodeBitstreamParams& params,
-                                                        EntityTreeElementExtraEncodeDataPointer entityTreeElementExtraEncodeData) const;
+                                                        EntityTreeElementExtraEncodeDataPointer entityTreeElementExtraEncodeData,
+                                                        const bool destinationNodeCanGetAndSetPrivateUserData = false) const;
 
     virtual void appendSubclassData(OctreePacketData* packetData, EncodeBitstreamParams& params,
                                     EntityTreeElementExtraEncodeDataPointer entityTreeElementExtraEncodeData,
@@ -303,6 +305,9 @@ public:
     bool getCanCastShadow() const;
     void setCanCastShadow(bool value);
 
+    void setCauterized(bool value);
+    bool getCauterized() const;
+
     inline bool isVisible() const { return getVisible(); }
     inline bool isInvisible() const { return !getVisible(); }
 
@@ -319,7 +324,7 @@ public:
     bool getDynamic() const;
     void setDynamic(bool value);
 
-    virtual bool shouldBePhysical() const { return false; }
+    virtual bool shouldBePhysical() const { return !isDead() && getShapeType() != SHAPE_TYPE_NONE && !isLocalEntity(); }
     bool isVisuallyReady() const { return _visuallyReady; }
 
     bool getLocked() const;
@@ -327,6 +332,9 @@ public:
 
     QString getUserData() const;
     virtual void setUserData(const QString& value); // FIXME: This is suspicious
+
+    QString getPrivateUserData() const;
+    void setPrivateUserData(const QString& value);
 
     // FIXME not thread safe?
     const SimulationOwner& getSimulationOwner() const { return _simulationOwner; }
@@ -420,8 +428,9 @@ public:
 
     bool isSimulated() const { return _simulated; }
 
-    void* getPhysicsInfo() const { return _physicsInfo; }
+    bool isInPhysicsSimulation() const { return (bool)(_flags & Simulation::SPECIAL_FLAG_IN_PHYSICS_SIMULATION); }
 
+    void* getPhysicsInfo() const { return _physicsInfo; }
     void setPhysicsInfo(void* data) { _physicsInfo = data; }
 
     EntityTreeElementPointer getElement() const { return _element; }
@@ -448,7 +457,7 @@ public:
     bool clearActions(EntitySimulationPointer simulation);
     void setDynamicData(QByteArray dynamicData);
     const QByteArray getDynamicData() const;
-    bool hasActions() const { return !_objectActions.empty(); }
+    bool hasActions() const { return !_objectActions.empty() || !_grabActions.empty(); }
     QList<QUuid> getActionIDs() const { return _objectActions.keys(); }
     QVariantMap getActionArguments(const QUuid& actionID) const;
     void deserializeActions();
@@ -498,6 +507,7 @@ public:
     virtual bool isWearable() const;
     bool isDomainEntity() const { return _hostType == entity::HostType::DOMAIN; }
     bool isAvatarEntity() const { return _hostType == entity::HostType::AVATAR; }
+    bool isMyAvatarEntity() const;
     bool isLocalEntity() const { return _hostType == entity::HostType::LOCAL; }
     entity::HostType getEntityHostType() const { return _hostType; }
     virtual void setEntityHostType(entity::HostType hostType) { _hostType = hostType; }
@@ -510,8 +520,6 @@ public:
     virtual bool wantsKeyboardFocus() const { return false; }
     virtual void setProxyWindow(QWindow* proxyWindow) {}
     virtual QObject* getEventHandler() { return nullptr; }
-
-    virtual void emitScriptEvent(const QVariant& message) {}
 
     QUuid getLastEditedBy() const { return _lastEditedBy; }
     void setLastEditedBy(QUuid value) { _lastEditedBy = value; }
@@ -531,9 +539,6 @@ public:
 
     static QString _marketplacePublicKey;
     static void retrieveMarketplacePublicKey();
-
-    void setCauterized(bool value) { _cauterized = value; }
-    bool getCauterized() const { return _cauterized; }
 
     float getBoundingRadius() const { return _boundingRadius; }
     void setSpaceIndex(int32_t index);
@@ -564,8 +569,12 @@ public:
     static void setPrimaryViewFrustumPositionOperator(std::function<glm::vec3()> getPrimaryViewFrustumPositionOperator) { _getPrimaryViewFrustumPositionOperator = getPrimaryViewFrustumPositionOperator; }
     static glm::vec3 getPrimaryViewFrustumPosition() { return _getPrimaryViewFrustumPositionOperator(); }
 
+    bool stillHasMyGrab() const;
+
+    bool needsRenderUpdate() const { return resultWithReadLock<bool>([&] { return _needsRenderUpdate; }); }
+    void setNeedsRenderUpdate(bool needsRenderUpdate) { withWriteLock([&] { _needsRenderUpdate = needsRenderUpdate; }); }
+
 signals:
-    void requestRenderUpdate();
     void spaceUpdate(std::pair<int32_t, glm::vec4> data);
 
 protected:
@@ -576,7 +585,7 @@ protected:
     void setSimulated(bool simulated) { _simulated = simulated; }
 
     const QByteArray getDynamicDataInternal() const;
-    bool stillHasGrabActions() const;
+    bool stillHasGrab() const;
     void setDynamicDataInternal(QByteArray dynamicData);
 
     virtual void dimensionsChanged() override;
@@ -641,6 +650,7 @@ protected:
     bool _dynamic { ENTITY_ITEM_DEFAULT_DYNAMIC };
     bool _locked { ENTITY_ITEM_DEFAULT_LOCKED };
     QString _userData { ENTITY_ITEM_DEFAULT_USER_DATA };
+    QString _privateUserData{ ENTITY_ITEM_DEFAULT_PRIVATE_USER_DATA };
     SimulationOwner _simulationOwner;
     bool _shouldHighlight { false };
     QString _name { ENTITY_ITEM_DEFAULT_NAME };
@@ -751,6 +761,8 @@ protected:
     GrabPropertyGroup _grabProperties;
 
     QHash<QUuid, EntityDynamicPointer> _grabActions;
+
+    mutable bool _needsRenderUpdate { false };
 
 private:
     static std::function<glm::quat(const glm::vec3&, const glm::quat&, BillboardMode, const glm::vec3&)> _getBillboardRotationOperator;

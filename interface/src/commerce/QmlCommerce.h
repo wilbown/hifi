@@ -19,6 +19,7 @@
 
 #include <QPixmap>
 
+#include <EntityItemID.h>
 #include <DependencyManager.h>
 
 class QmlCommerce : public QObject, public Dependency {
@@ -49,7 +50,7 @@ signals:
     void availableUpdatesResult(QJsonObject result);
     void updateItemResult(QJsonObject result);
 
-    void updateCertificateStatus(const QString& certID, uint certStatus);
+    void updateCertificateStatus(const EntityItemID& entityID, uint certStatus);
 
     void transferAssetToNodeResult(QJsonObject result);
     void transferAssetToUsernameResult(QJsonObject result);
@@ -89,7 +90,7 @@ protected:
     Q_INVOKABLE void transferAssetToUsername(const QString& username, const QString& certificateID, const int& amount, const QString& optionalMessage);
     Q_INVOKABLE void authorizeAssetTransfer(const QString& couponID, const QString& certificateID, const int& amount, const QString& optionalMessage);
 
-    Q_INVOKABLE void replaceContentSet(const QString& itemHref, const QString& certificateID);
+    Q_INVOKABLE void replaceContentSet(const QString& itemHref, const QString& certificateID, const QString& itemName);
 
     Q_INVOKABLE QString getInstalledApps(const QString& justInstalledAppID = "");
     Q_INVOKABLE bool installApp(const QString& appHref, const bool& alsoOpenImmediately = false);

@@ -24,6 +24,7 @@
 #include <QtCore/QTimer>
 #include <QtCore/QThread>
 #include <QtCore/QJsonDocument>
+#include <shared/QtHelpers.h>
 
 #include <AABox.h>
 #include <AvatarLogging.h>
@@ -82,6 +83,7 @@ AvatarMixer::AvatarMixer(ReceivedMessage& message) :
     packetReceiver.registerListener(PacketType::BulkAvatarTraitsAck, this, "queueIncomingPacket");
     packetReceiver.registerListenerForTypes({ PacketType::OctreeStats, PacketType::EntityData, PacketType::EntityErase },
         this, "handleOctreePacket");
+    packetReceiver.registerListener(PacketType::ChallengeOwnership, this, "queueIncomingPacket");
 
     packetReceiver.registerListenerForTypes({
         PacketType::ReplicatedAvatarIdentity,
@@ -253,8 +255,27 @@ void AvatarMixer::start() {
 
         int lockWait, nodeTransform, functor;
 
+        // Set our query each frame
         {
             _entityViewer.queryOctree();
+        }
+
+        // Dirty the hero status if there's been an entity change.
+        {
+            if (_dirtyHeroStatus) {
+                _dirtyHeroStatus = false;
+                nodeList->nestedEach([](NodeList::const_iterator cbegin, NodeList::const_iterator cend) {
+                    std::for_each(cbegin, cend, [](const SharedNodePointer& node) {
+                        if (node->getType() == NodeType::Agent) {
+                            NodeData* nodeData = node->getLinkedData();
+                            if (nodeData) {
+                                auto& avatar = static_cast<AvatarMixerClientData*>(nodeData)->getAvatar();
+                                avatar.setNeedsHeroCheck();
+                            }
+                        }
+                    });
+                });
+            }
         }
 
         // Allow nodes to process any pending/queued packets across our worker threads
@@ -344,14 +365,17 @@ void AvatarMixer::manageIdentityData(const SharedNodePointer& node) {
 
     // there is no need to manage identity data we haven't received yet
     // so bail early if we've never received an identity packet for this avatar
-    if (!nodeData || !nodeData->getAvatar().hasProcessedFirstIdentity()) {
+    if (!nodeData || !nodeData->getAvatar().hasProcessedFirstIdentity() || !node->getActiveSocket()) {
         return;
     }
 
-    bool sendIdentity = false;
-    if (nodeData && nodeData->getAvatarSessionDisplayNameMustChange()) {
-        AvatarData& avatar = nodeData->getAvatar();
-        const QString& existingBaseDisplayName = nodeData->getAvatar().getSessionDisplayName();
+    MixerAvatar& avatar = nodeData->getAvatar();
+    bool sendIdentity = avatar.needsIdentityUpdate();
+    if (sendIdentity) {
+        nodeData->flagIdentityChange();
+    }
+    if (nodeData->getAvatarSessionDisplayNameMustChange()) {
+        const QString& existingBaseDisplayName = avatar.getSessionDisplayName();
         if (!existingBaseDisplayName.isEmpty()) {
             SessionDisplayName existingDisplayName { existingBaseDisplayName };
 
@@ -395,10 +419,11 @@ void AvatarMixer::manageIdentityData(const SharedNodePointer& node) {
         sendIdentityPacket(nodeData, node); // Tell node whose name changed about its new session display name or avatar.
         // since this packet includes a change to either the skeleton model URL or the display name
         // it needs a new sequence number
-        nodeData->getAvatar().pushIdentitySequenceNumber();
+        avatar.pushIdentitySequenceNumber();
 
         // tell node whose name changed about its new session display name or avatar.
         sendIdentityPacket(nodeData, node);
+        avatar.setNeedsIdentityUpdate(false);
     }
 }
 
@@ -474,6 +499,8 @@ void AvatarMixer::handleAvatarKilled(SharedNodePointer avatarNode) {
            } else {
                _sessionDisplayNames.erase(displayNameIter);
            }
+
+            nodeData->getAvatar().stopChallengeTimer();
         }
 
         std::unique_ptr<NLPacket> killPacket;
@@ -729,6 +756,13 @@ void AvatarMixer::sendStatsPacket() {
     statsObject["trailing_mix_ratio"] = _trailingMixRatio;
     statsObject["throttling_ratio"] = _throttlingRatio;
 
+#ifdef DEBUG_EVENT_QUEUE
+    QJsonObject qtStats;
+
+    _slavePool.queueStats(qtStats);
+    statsObject["avatar_thread_event_queue"] = qtStats;
+#endif
+
     // this things all occur on the frequency of the tight loop
     int tightLoopFrames = _numTightLoopFrames;
     int tenTimesPerFrame = tightLoopFrames * 10;
@@ -827,7 +861,7 @@ void AvatarMixer::sendStatsPacket() {
 
     QJsonObject avatarsObject;
     auto nodeList = DependencyManager::get<NodeList>();
-    // add stats for each listerner
+    // add stats for each listener
     nodeList->eachNode([&](const SharedNodePointer& node) {
         QJsonObject avatarStats;
 
@@ -850,6 +884,12 @@ void AvatarMixer::sendStatsPacket() {
                 // add the diff between the full outbound bandwidth and the measured bandwidth for AvatarData send only
                 avatarStats["delta_full_vs_avatar_data_kbps"] =
                     (double)outboundAvatarDataKbps - avatarStats[OUTBOUND_AVATAR_DATA_STATS_KEY].toDouble();
+            }
+
+            if (node->getType() != NodeType::Agent) {  // Nodes that aren't avatars
+                const QString displayName
+                    { node->getType() == NodeType::EntityScriptServer ? "ENTITY SCRIPT SERVER" : "ENTITY SERVER" };
+                avatarStats["display_name"] = displayName;
             }
         }
 
@@ -973,19 +1013,30 @@ void AvatarMixer::parseDomainServerSettings(const QJsonObject& domainSettings) {
     {
         const QString CONNECTION_RATE = "connection_rate";
         auto nodeList = DependencyManager::get<NodeList>();
-        auto defaultConnectionRate = nodeList->getMaxConnectionRate();
-        int connectionRate = avatarMixerGroupObject[CONNECTION_RATE].toInt((int)defaultConnectionRate);
-        nodeList->setMaxConnectionRate(connectionRate);
+        bool success;
+        int connectionRate = avatarMixerGroupObject[CONNECTION_RATE].toString().toInt(&success);
+        if (success) {
+            nodeList->setMaxConnectionRate(connectionRate);
+        }
+    }
+
+    {   // Fraction of downstream bandwidth reserved for 'hero' avatars:
+        static const QString PRIORITY_FRACTION_KEY = "priority_fraction";
+        if (avatarMixerGroupObject.contains(PRIORITY_FRACTION_KEY)) {
+            float priorityFraction = float(avatarMixerGroupObject[PRIORITY_FRACTION_KEY].toDouble());
+            _slavePool.setPriorityReservedFraction(std::min(std::max(0.0f, priorityFraction), 1.0f));
+            qCDebug(avatars) << "Avatar mixer reserving" << priorityFraction << "of bandwidth for priority avatars";
+        }
     }
 
     const QString AVATARS_SETTINGS_KEY = "avatars";
 
     static const QString MIN_HEIGHT_OPTION = "min_avatar_height";
-    float settingMinHeight = domainSettings[AVATARS_SETTINGS_KEY].toObject()[MIN_HEIGHT_OPTION].toDouble(MIN_AVATAR_HEIGHT);
+    float settingMinHeight = avatarMixerGroupObject[MIN_HEIGHT_OPTION].toDouble(MIN_AVATAR_HEIGHT);
     _domainMinimumHeight = glm::clamp(settingMinHeight, MIN_AVATAR_HEIGHT, MAX_AVATAR_HEIGHT);
 
     static const QString MAX_HEIGHT_OPTION = "max_avatar_height";
-    float settingMaxHeight = domainSettings[AVATARS_SETTINGS_KEY].toObject()[MAX_HEIGHT_OPTION].toDouble(MAX_AVATAR_HEIGHT);
+    float settingMaxHeight = avatarMixerGroupObject[MAX_HEIGHT_OPTION].toDouble(MAX_AVATAR_HEIGHT);
     _domainMaximumHeight = glm::clamp(settingMaxHeight, MIN_AVATAR_HEIGHT, MAX_AVATAR_HEIGHT);
 
     // make sure that the domain owner didn't flip min and max
@@ -997,11 +1048,11 @@ void AvatarMixer::parseDomainServerSettings(const QJsonObject& domainSettings) {
                      << "and a maximum avatar height of" << _domainMaximumHeight;
 
     static const QString AVATAR_WHITELIST_OPTION = "avatar_whitelist";
-    _slaveSharedData.skeletonURLWhitelist = domainSettings[AVATARS_SETTINGS_KEY].toObject()[AVATAR_WHITELIST_OPTION]
+    _slaveSharedData.skeletonURLWhitelist = avatarMixerGroupObject[AVATAR_WHITELIST_OPTION]
         .toString().split(',', QString::KeepEmptyParts);
 
     static const QString REPLACEMENT_AVATAR_OPTION = "replacement_avatar";
-    _slaveSharedData.skeletonReplacementURL = domainSettings[AVATARS_SETTINGS_KEY].toObject()[REPLACEMENT_AVATAR_OPTION]
+    _slaveSharedData.skeletonReplacementURL = avatarMixerGroupObject[REPLACEMENT_AVATAR_OPTION]
         .toString();
 
     if (_slaveSharedData.skeletonURLWhitelist.count() == 1 && _slaveSharedData.skeletonURLWhitelist[0].isEmpty()) {
@@ -1018,9 +1069,12 @@ void AvatarMixer::parseDomainServerSettings(const QJsonObject& domainSettings) {
 
 void AvatarMixer::setupEntityQuery() {
     _entityViewer.init();
+    EntityTreePointer entityTree = _entityViewer.getTree();
     DependencyManager::registerInheritance<SpatialParentFinder, AssignmentParentFinder>();
-    DependencyManager::set<AssignmentParentFinder>(_entityViewer.getTree());
-    _slaveSharedData.entityTree = _entityViewer.getTree();
+    DependencyManager::set<AssignmentParentFinder>(entityTree);
+
+    connect(entityTree.get(), &EntityTree::addingEntityPointer, this, &AvatarMixer::entityAdded);
+    connect(entityTree.get(), &EntityTree::deletingEntityPointer, this, &AvatarMixer::entityChange);
 
     // ES query: {"avatarPriority": true, "type": "Zone"}
     QJsonObject priorityZoneQuery;
@@ -1028,6 +1082,7 @@ void AvatarMixer::setupEntityQuery() {
     priorityZoneQuery["type"] = "Zone";
 
     _entityViewer.getOctreeQuery().setJSONParameters(priorityZoneQuery);
+    _slaveSharedData.entityTree = entityTree;
 }
 
 void AvatarMixer::handleOctreePacket(QSharedPointer<ReceivedMessage> message, SharedNodePointer senderNode) {
@@ -1062,6 +1117,25 @@ void AvatarMixer::handleOctreePacket(QSharedPointer<ReceivedMessage> message, Sh
         qCDebug(avatars) << "Unexpected packet type:" << packetType;
         break;
     }
+}
+
+void AvatarMixer::entityAdded(EntityItem* entity) {
+    if (entity->getType() == EntityTypes::Zone) {
+        _dirtyHeroStatus = true;
+        entity->registerChangeHandler([this](const EntityItemID& entityItemID) {
+            entityChange();
+        });
+    }
+}
+
+void AvatarMixer::entityRemoved(EntityItem * entity) {
+    if (entity->getType() == EntityTypes::Zone) {
+        _dirtyHeroStatus = true;
+    }
+}
+
+void AvatarMixer::entityChange() {
+    _dirtyHeroStatus = true;
 }
 
 void AvatarMixer::aboutToFinish() {

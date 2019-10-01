@@ -346,7 +346,7 @@ void ResourceCache::setRequestLimit(uint32_t limit) {
 QSharedPointer<Resource> ResourceCache::getResource(const QUrl& url, const QUrl& fallback, void* extra, size_t extraHash) {
     QSharedPointer<Resource> resource;
     {
-        QReadLocker locker(&_resourcesLock);
+        QWriteLocker locker(&_resourcesLock);
         auto& resourcesWithExtraHash = _resources[url];
         auto resourcesWithExtraHashIter = resourcesWithExtraHash.find(extraHash);
         if (resourcesWithExtraHashIter != resourcesWithExtraHash.end()) {
@@ -576,6 +576,7 @@ Resource::Resource(const Resource& other) :
 
 Resource::Resource(const QUrl& url) :
     _url(url),
+    _effectiveBaseURL(url),
     _activeUrl(url),
     _requestID(++requestID) {
     init();
@@ -841,7 +842,8 @@ bool Resource::handleFailedRequest(ResourceRequest::Result result) {
         // FALLTHRU
         default: {
             _attemptsRemaining = 0;
-            qCDebug(networking) << "Error loading, attempt:" << _attempts << "attemptsRemaining:" << _attemptsRemaining;
+            QMetaEnum metaEnum = QMetaEnum::fromType<ResourceRequest::Result>();
+            qCDebug(networking) << "Error loading:" << metaEnum.valueToKey(result) << "resource:" << _url.toString();
             auto error = (result == ResourceRequest::Timeout) ? QNetworkReply::TimeoutError
                                                               : QNetworkReply::UnknownNetworkError;
             emit failed(error);

@@ -27,6 +27,10 @@ LaserPointer::LaserPointer(const QVariant& rayProps, const RenderStateMap& rende
 {
 }
 
+PickQuery::PickType LaserPointer::getType() const {
+    return PickQuery::PickType::Ray;
+}
+
 void LaserPointer::editRenderStatePath(const std::string& state, const QVariant& pathProps) {
     auto renderState = std::static_pointer_cast<RenderState>(_renderStates[state]);
     if (renderState) {
@@ -47,7 +51,7 @@ PickResultPointer LaserPointer::getPickResultCopy(const PickResultPointer& pickR
 }
 
 QVariantMap LaserPointer::toVariantMap() const {
-    QVariantMap qVariantMap;
+    QVariantMap qVariantMap = Parent::toVariantMap();
 
     QVariantMap qRenderStates;
     for (auto iter = _renderStates.cbegin(); iter != _renderStates.cend(); iter++) {
@@ -233,16 +237,19 @@ PointerEvent LaserPointer::buildPointerEvent(const PickedObject& target, const P
 
     // If we just started triggering and we haven't moved too much, don't update intersection and pos2D
     TriggerState& state = hover ? _latestState : _states[button];
-    float sensorToWorldScale = DependencyManager::get<AvatarManager>()->getMyAvatar()->getSensorToWorldScale();
-    float deadspotSquared = TOUCH_PRESS_TO_MOVE_DEADSPOT_SQUARED * sensorToWorldScale * sensorToWorldScale;
-    bool withinDeadspot = usecTimestampNow() - state.triggerStartTime < POINTER_MOVE_DELAY && glm::distance2(pos2D, state.triggerPos2D) < deadspotSquared;
-    if ((state.triggering || state.wasTriggering) && !state.deadspotExpired && withinDeadspot) {
-        pos2D = state.triggerPos2D;
-        intersection = state.intersection;
-        surfaceNormal = state.surfaceNormal;
-    }
-    if (!withinDeadspot) {
-        state.deadspotExpired = true;
+    auto avatar = DependencyManager::get<AvatarManager>()->getMyAvatar();
+    if (avatar) {
+        float sensorToWorldScale = avatar->getSensorToWorldScale();
+        float deadspotSquared = TOUCH_PRESS_TO_MOVE_DEADSPOT_SQUARED * sensorToWorldScale * sensorToWorldScale;
+        bool withinDeadspot = usecTimestampNow() - state.triggerStartTime < POINTER_MOVE_DELAY && glm::distance2(pos2D, state.triggerPos2D) < deadspotSquared;
+        if ((state.triggering || state.wasTriggering) && !state.deadspotExpired && withinDeadspot) {
+            pos2D = state.triggerPos2D;
+            intersection = state.intersection;
+            surfaceNormal = state.surfaceNormal;
+        }
+        if (!withinDeadspot) {
+            state.deadspotExpired = true;
+        }
     }
 
     return PointerEvent(pos2D, intersection, surfaceNormal, direction);

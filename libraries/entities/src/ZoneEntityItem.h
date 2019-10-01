@@ -62,6 +62,7 @@ public:
     virtual bool isReadyToComputeShape() const override { return false; }
     virtual void setShapeType(ShapeType type) override;
     virtual ShapeType getShapeType() const override;
+    bool shouldBePhysical() const override { return false; }
 
     QString getCompoundShapeURL() const;
     virtual void setCompoundShapeURL(const QString& url);
@@ -133,7 +134,7 @@ protected:
     KeyLightPropertyGroup _keyLightProperties;
     AmbientLightPropertyGroup _ambientLightProperties;
 
-    ShapeType _shapeType = DEFAULT_SHAPE_TYPE;
+    ShapeType _shapeType { DEFAULT_SHAPE_TYPE };
     QString _compoundShapeURL;
 
     // The following 3 values are the defaults for zone creation

@@ -56,6 +56,7 @@ EntityScriptingInterface::EntityScriptingInterface(bool bidOnSimulationOwnership
     connect(nodeList.data(), &NodeList::canRezCertifiedChanged, this, &EntityScriptingInterface::canRezCertifiedChanged);
     connect(nodeList.data(), &NodeList::canRezTmpCertifiedChanged, this, &EntityScriptingInterface::canRezTmpCertifiedChanged);
     connect(nodeList.data(), &NodeList::canWriteAssetsChanged, this, &EntityScriptingInterface::canWriteAssetsChanged);
+    connect(nodeList.data(), &NodeList::canGetAndSetPrivateUserDataChanged, this, &EntityScriptingInterface::canGetAndSetPrivateUserDataChanged);
 
     auto& packetReceiver = nodeList->getPacketReceiver();
     packetReceiver.registerListener(PacketType::EntityScriptCallMethod, this, "handleEntityScriptCallMethodPacket");
@@ -105,6 +106,11 @@ bool EntityScriptingInterface::canWriteAssets() {
 bool EntityScriptingInterface::canReplaceContent() {
     auto nodeList = DependencyManager::get<NodeList>();
     return nodeList->getThisNodeCanReplaceContent();
+}
+
+bool EntityScriptingInterface::canGetAndSetPrivateUserData() {
+    auto nodeList = DependencyManager::get<NodeList>();
+    return nodeList->getThisNodeCanGetAndSetPrivateUserData();
 }
 
 void EntityScriptingInterface::setEntityTree(EntityTreePointer elementTree) {
@@ -1101,13 +1107,13 @@ void EntityScriptingInterface::handleEntityScriptCallMethodPacket(QSharedPointer
 
 void EntityScriptingInterface::onAddingEntity(EntityItem* entity) {
     if (entity->isWearable()) {
-        QMetaObject::invokeMethod(this, "addingWearable", Q_ARG(QUuid, entity->getEntityItemID()));
+        QMetaObject::invokeMethod(this, "addingWearable", Q_ARG(EntityItemID, entity->getEntityItemID()));
     }
 }
 
 void EntityScriptingInterface::onDeletingEntity(EntityItem* entity) {
     if (entity->isWearable()) {
-        QMetaObject::invokeMethod(this, "deletingWearable", Q_ARG(QUuid, entity->getEntityItemID()));
+        QMetaObject::invokeMethod(this, "deletingWearable", Q_ARG(EntityItemID, entity->getEntityItemID()));
     }
 }
 
@@ -2196,14 +2202,7 @@ bool EntityScriptingInterface::wantsHandControllerPointerEvents(const QUuid& id)
 }
 
 void EntityScriptingInterface::emitScriptEvent(const EntityItemID& entityID, const QVariant& message) {
-    if (_entityTree) {
-        _entityTree->withReadLock([&] {
-            EntityItemPointer entity = _entityTree->findEntityByEntityItemID(EntityItemID(entityID));
-            if (entity) {
-                entity->emitScriptEvent(message);
-            }
-        });
-    }
+    EntityTree::emitScriptEvent(entityID, message);
 }
 
 // TODO move this someplace that makes more sense...

@@ -19,6 +19,7 @@
 
 #include "ScriptableMesh.h"
 #include <DependencyManager.h>
+#include "RegisteredMetaTypes.h"
 
 
 /**jsdoc
@@ -103,8 +104,10 @@ private:
 
 };
 
-Q_DECLARE_METATYPE(glm::uint32)
-Q_DECLARE_METATYPE(QVector<glm::uint32>)
+namespace scriptable {
+    QScriptValue scriptableMaterialToScriptValue(QScriptEngine* engine, const scriptable::ScriptableMaterial &material);
+};
+
 Q_DECLARE_METATYPE(NestableType)
 
 #endif // hifi_GraphicsScriptingInterface_h

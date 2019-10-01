@@ -32,6 +32,8 @@ Rig::CharacterControllerState convertCharacterControllerState(CharacterControlle
             return Rig::CharacterControllerState::InAir;
         case CharacterController::State::Hover:
             return Rig::CharacterControllerState::Hover;
+        case CharacterController::State::Seated:
+            return Rig::CharacterControllerState::Seated;
     };
 }
 
@@ -294,8 +296,6 @@ void MySkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
         _prevIsEstimatingHips = false;
     }
 
-    params.isTalking = head->getTimeWithoutTalking() <= 1.5f;
-
     // pass detailed torso k-dops to rig.
     int hipsJoint = _rig.indexOfJoint("Hips");
     if (hipsJoint >= 0) {
@@ -313,6 +313,10 @@ void MySkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
     if (spine2Joint >= 0) {
         params.spine2ShapeInfo = hfmModel.joints[spine2Joint].shapeInfo;
     }
+    const float TALKING_TIME_THRESHOLD = 0.75f;
+    params.isTalking = head->getTimeWithoutTalking() <= TALKING_TIME_THRESHOLD;
+
+    myAvatar->updateRigControllerParameters(params);
 
     _rig.updateFromControllerParameters(params, deltaTime);
 
@@ -333,7 +337,6 @@ void MySkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
     eyeParams.modelTranslation = getTranslation();
     eyeParams.leftEyeJointIndex = _rig.indexOfJoint("LeftEye");
     eyeParams.rightEyeJointIndex = _rig.indexOfJoint("RightEye");
-
     _rig.updateFromEyeParameters(eyeParams);
 
     updateFingers();

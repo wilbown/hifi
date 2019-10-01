@@ -22,12 +22,15 @@
 #include "AnimationLogging.h"
 #include "AnimOverlay.h"
 #include "AnimStateMachine.h"
+#include "AnimRandomSwitch.h"
 #include "AnimManipulator.h"
 #include "AnimInverseKinematics.h"
 #include "AnimDefaultPose.h"
 #include "AnimTwoBoneIK.h"
 #include "AnimSplineIK.h"
 #include "AnimPoleVectorConstraint.h"
+#include "AnimBlendDirectional.h"
+#include "AnimUtil.h"
 
 using NodeLoaderFunc = AnimNode::Pointer (*)(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 using NodeProcessFunc = bool (*)(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
@@ -38,12 +41,14 @@ static AnimNode::Pointer loadBlendLinearNode(const QJsonObject& jsonObj, const Q
 static AnimNode::Pointer loadBlendLinearMoveNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadOverlayNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadStateMachineNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
+static AnimNode::Pointer loadRandomSwitchStateMachineNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadManipulatorNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadInverseKinematicsNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadDefaultPoseNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadTwoBoneIKNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadSplineIKNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 static AnimNode::Pointer loadPoleVectorConstraintNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
+static AnimNode::Pointer loadBlendDirectionalNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 
 static const float ANIM_GRAPH_LOAD_PRIORITY = 10.0f;
 
@@ -51,6 +56,8 @@ static const float ANIM_GRAPH_LOAD_PRIORITY = 10.0f;
 // returns node on success, nullptr on failure.
 static bool processDoNothing(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl) { return true; }
 bool processStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
+bool processRandomSwitchStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
+bool processBlendDirectionalNode(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl);
 
 static const char* animNodeTypeToString(AnimNode::Type type) {
     switch (type) {
@@ -59,12 +66,14 @@ static const char* animNodeTypeToString(AnimNode::Type type) {
     case AnimNode::Type::BlendLinearMove: return "blendLinearMove";
     case AnimNode::Type::Overlay: return "overlay";
     case AnimNode::Type::StateMachine: return "stateMachine";
+    case AnimNode::Type::RandomSwitchStateMachine: return "randomSwitchStateMachine";
     case AnimNode::Type::Manipulator: return "manipulator";
     case AnimNode::Type::InverseKinematics: return "inverseKinematics";
     case AnimNode::Type::DefaultPose: return "defaultPose";
     case AnimNode::Type::TwoBoneIK: return "twoBoneIK";
     case AnimNode::Type::SplineIK: return "splineIK";
     case AnimNode::Type::PoleVectorConstraint: return "poleVectorConstraint";
+    case AnimNode::Type::BlendDirectional: return "blendDirectional";
     case AnimNode::Type::NumTypes: return nullptr;
     };
     return nullptr;
@@ -87,10 +96,87 @@ static AnimStateMachine::InterpType stringToInterpType(const QString& str) {
         return AnimStateMachine::InterpType::SnapshotBoth;
     } else if (str == "snapshotPrev") {
         return AnimStateMachine::InterpType::SnapshotPrev;
+    } else if (str == "evaluateBoth") {
+        return AnimStateMachine::InterpType::EvaluateBoth;
     } else {
         return AnimStateMachine::InterpType::NumTypes;
     }
 }
+
+static AnimRandomSwitch::InterpType stringToRandomInterpType(const QString& str) {
+    if (str == "snapshotBoth") {
+        return AnimRandomSwitch::InterpType::SnapshotBoth;
+    } else if (str == "snapshotPrev") {
+        return AnimRandomSwitch::InterpType::SnapshotPrev;
+    } else if (str == "evaluateBoth") {
+        return AnimRandomSwitch::InterpType::EvaluateBoth;
+    } else {
+        return AnimRandomSwitch::InterpType::NumTypes;
+    }
+}
+
+static EasingType stringToEasingType(const QString& str) {
+    if (str == "linear") {
+        return EasingType_Linear;
+    } else if (str == "easeInSine") {
+        return EasingType_EaseInSine;
+    } else if (str == "easeOutSine") {
+        return EasingType_EaseOutSine;
+    } else if (str == "easeInOutSine") {
+        return EasingType_EaseInOutSine;
+    } else if (str == "easeInQuad") {
+        return EasingType_EaseInQuad;
+    } else if (str == "easeOutQuad") {
+        return EasingType_EaseOutQuad;
+    } else if (str == "easeInOutQuad") {
+        return EasingType_EaseInOutQuad;
+    } else if (str == "easeInCubic") {
+        return EasingType_EaseInCubic;
+    } else if (str == "easeOutCubic") {
+        return EasingType_EaseOutCubic;
+    } else if (str == "easeInOutCubic") {
+        return EasingType_EaseInOutCubic;
+    } else if (str == "easeInQuart") {
+        return EasingType_EaseInQuart;
+    } else if (str == "easeOutQuart") {
+        return EasingType_EaseOutQuart;
+    } else if (str == "easeInOutQuart") {
+        return EasingType_EaseInOutQuart;
+    } else if (str == "easeInQuint") {
+        return EasingType_EaseInQuint;
+    } else if (str == "easeOutQuint") {
+        return EasingType_EaseOutQuint;
+    } else if (str == "easeInOutQuint") {
+        return EasingType_EaseInOutQuint;
+    } else if (str == "easeInExpo") {
+        return EasingType_EaseInExpo;
+    } else if (str == "easeOutExpo") {
+        return EasingType_EaseOutExpo;
+    } else if (str == "easeInOutExpo") {
+        return EasingType_EaseInOutExpo;
+    } else if (str == "easeInCirc") {
+        return EasingType_EaseInCirc;
+    } else if (str == "easeOutCirc") {
+        return EasingType_EaseOutCirc;
+    } else if (str == "easeInOutCirc") {
+        return EasingType_EaseInOutCirc;
+    } else {
+        return EasingType_NumTypes;
+    }
+}
+
+static AnimBlendType stringToAnimBlendType(const QString& str) {
+    if (str == "normal") {
+        return AnimBlendType_Normal;
+    } else if (str == "addRelative") {
+        return AnimBlendType_AddRelative;
+    } else if (str == "addAbsolute") {
+        return AnimBlendType_AddAbsolute;
+    } else {
+        return AnimBlendType_NumTypes;
+    }
+}
+
 
 static const char* animManipulatorJointVarTypeToString(AnimManipulator::JointVar::Type type) {
     switch (type) {
@@ -122,12 +208,14 @@ static NodeLoaderFunc animNodeTypeToLoaderFunc(AnimNode::Type type) {
     case AnimNode::Type::BlendLinearMove: return loadBlendLinearMoveNode;
     case AnimNode::Type::Overlay: return loadOverlayNode;
     case AnimNode::Type::StateMachine: return loadStateMachineNode;
+    case AnimNode::Type::RandomSwitchStateMachine: return loadRandomSwitchStateMachineNode;
     case AnimNode::Type::Manipulator: return loadManipulatorNode;
     case AnimNode::Type::InverseKinematics: return loadInverseKinematicsNode;
     case AnimNode::Type::DefaultPose: return loadDefaultPoseNode;
     case AnimNode::Type::TwoBoneIK: return loadTwoBoneIKNode;
     case AnimNode::Type::SplineIK: return loadSplineIKNode;
     case AnimNode::Type::PoleVectorConstraint: return loadPoleVectorConstraintNode;
+    case AnimNode::Type::BlendDirectional: return loadBlendDirectionalNode;
     case AnimNode::Type::NumTypes: return nullptr;
     };
     return nullptr;
@@ -140,12 +228,14 @@ static NodeProcessFunc animNodeTypeToProcessFunc(AnimNode::Type type) {
     case AnimNode::Type::BlendLinearMove: return processDoNothing;
     case AnimNode::Type::Overlay: return processDoNothing;
     case AnimNode::Type::StateMachine: return processStateMachineNode;
+    case AnimNode::Type::RandomSwitchStateMachine: return processRandomSwitchStateMachineNode;
     case AnimNode::Type::Manipulator: return processDoNothing;
     case AnimNode::Type::InverseKinematics: return processDoNothing;
     case AnimNode::Type::DefaultPose: return processDoNothing;
     case AnimNode::Type::TwoBoneIK: return processDoNothing;
     case AnimNode::Type::SplineIK: return processDoNothing;
     case AnimNode::Type::PoleVectorConstraint: return processDoNothing;
+    case AnimNode::Type::BlendDirectional: return processBlendDirectionalNode;
     case AnimNode::Type::NumTypes: return nullptr;
     };
     return nullptr;
@@ -303,6 +393,9 @@ static AnimNode::Pointer loadClipNode(const QJsonObject& jsonObj, const QString&
     READ_FLOAT(timeScale, jsonObj, id, jsonUrl, nullptr);
     READ_BOOL(loopFlag, jsonObj, id, jsonUrl, nullptr);
     READ_OPTIONAL_BOOL(mirrorFlag, jsonObj, false);
+    READ_OPTIONAL_STRING(blendType, jsonObj);
+    READ_OPTIONAL_STRING(baseURL, jsonObj);
+    READ_OPTIONAL_FLOAT(baseFrame, jsonObj, 0.0f);
 
     READ_OPTIONAL_STRING(startFrameVar, jsonObj);
     READ_OPTIONAL_STRING(endFrameVar, jsonObj);
@@ -310,11 +403,21 @@ static AnimNode::Pointer loadClipNode(const QJsonObject& jsonObj, const QString&
     READ_OPTIONAL_STRING(loopFlagVar, jsonObj);
     READ_OPTIONAL_STRING(mirrorFlagVar, jsonObj);
 
+
     // animation urls can be relative to the containing url document.
     auto tempUrl = QUrl(url);
     tempUrl = jsonUrl.resolved(tempUrl);
 
-    auto node = std::make_shared<AnimClip>(id, tempUrl.toString(), startFrame, endFrame, timeScale, loopFlag, mirrorFlag);
+    AnimBlendType blendTypeEnum = AnimBlendType_Normal;  // default value
+    if (!blendType.isEmpty()) {
+        blendTypeEnum = stringToAnimBlendType(blendType);
+        if (blendTypeEnum == AnimBlendType_NumTypes) {
+            qCCritical(animation) << "AnimNodeLoader, bad blendType on clip, id = " << id;
+            return nullptr;
+        }
+    }
+
+    auto node = std::make_shared<AnimClip>(id, tempUrl.toString(), startFrame, endFrame, timeScale, loopFlag, mirrorFlag, blendTypeEnum, baseURL, baseFrame);
 
     if (!startFrameVar.isEmpty()) {
         node->setStartFrameVar(startFrameVar);
@@ -338,10 +441,19 @@ static AnimNode::Pointer loadClipNode(const QJsonObject& jsonObj, const QString&
 static AnimNode::Pointer loadBlendLinearNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl) {
 
     READ_FLOAT(alpha, jsonObj, id, jsonUrl, nullptr);
-
+    READ_OPTIONAL_STRING(blendType, jsonObj);
     READ_OPTIONAL_STRING(alphaVar, jsonObj);
 
-    auto node = std::make_shared<AnimBlendLinear>(id, alpha);
+    AnimBlendType blendTypeEnum = AnimBlendType_Normal;  // default value
+    if (!blendType.isEmpty()) {
+        blendTypeEnum = stringToAnimBlendType(blendType);
+        if (blendTypeEnum == AnimBlendType_NumTypes) {
+            qCCritical(animation) << "AnimNodeLoader, bad blendType on blendLinear, id = " << id;
+            return nullptr;
+        }
+    }
+
+    auto node = std::make_shared<AnimBlendLinear>(id, alpha, blendTypeEnum);
 
     if (!alphaVar.isEmpty()) {
         node->setAlphaVar(alphaVar);
@@ -460,6 +572,11 @@ static AnimNode::Pointer loadOverlayNode(const QJsonObject& jsonObj, const QStri
 
 static AnimNode::Pointer loadStateMachineNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl) {
     auto node = std::make_shared<AnimStateMachine>(id);
+    return node;
+}
+
+static AnimNode::Pointer loadRandomSwitchStateMachineNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl) {
+    auto node = std::make_shared<AnimRandomSwitch>(id);
     return node;
 }
 
@@ -660,6 +777,32 @@ static AnimNode::Pointer loadPoleVectorConstraintNode(const QJsonObject& jsonObj
     return node;
 }
 
+static AnimNode::Pointer loadBlendDirectionalNode(const QJsonObject& jsonObj, const QString& id, const QUrl& jsonUrl) {
+
+    READ_VEC3(alpha, jsonObj, id, jsonUrl, nullptr);
+    READ_OPTIONAL_STRING(alphaVar, jsonObj);
+
+    READ_OPTIONAL_STRING(centerId, jsonObj);
+    READ_OPTIONAL_STRING(upId, jsonObj);
+    READ_OPTIONAL_STRING(downId, jsonObj);
+    READ_OPTIONAL_STRING(leftId, jsonObj);
+    READ_OPTIONAL_STRING(rightId, jsonObj);
+    READ_OPTIONAL_STRING(upLeftId, jsonObj);
+    READ_OPTIONAL_STRING(upRightId, jsonObj);
+    READ_OPTIONAL_STRING(downLeftId, jsonObj);
+    READ_OPTIONAL_STRING(downRightId, jsonObj);
+
+    auto node = std::make_shared<AnimBlendDirectional>(id, alpha, centerId,
+                                                       upId, downId, leftId, rightId,
+                                                       upLeftId, upRightId, downLeftId, downRightId);
+
+    if (!alphaVar.isEmpty()) {
+        node->setAlphaVar(alphaVar);
+    }
+
+    return node;
+}
+
 void buildChildMap(std::map<QString, int>& map, AnimNode::Pointer node) {
     for (int i = 0; i < (int)node->getChildCount(); ++i) {
         map.insert(std::pair<QString, int>(node->getChild(i)->getID(), i));
@@ -702,6 +845,7 @@ bool processStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj,
         READ_FLOAT(interpTarget, stateObj, nodeId, jsonUrl, false);
         READ_FLOAT(interpDuration, stateObj, nodeId, jsonUrl, false);
         READ_OPTIONAL_STRING(interpType, stateObj);
+        READ_OPTIONAL_STRING(easingType, stateObj);
 
         READ_OPTIONAL_STRING(interpTargetVar, stateObj);
         READ_OPTIONAL_STRING(interpDurationVar, stateObj);
@@ -722,7 +866,16 @@ bool processStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj,
             }
         }
 
-        auto statePtr = std::make_shared<AnimStateMachine::State>(id, iter->second, interpTarget, interpDuration, interpTypeEnum);
+        EasingType easingTypeEnum = EasingType_Linear;  // default value
+        if (!easingType.isEmpty()) {
+            easingTypeEnum = stringToEasingType(easingType);
+            if (easingTypeEnum == EasingType_NumTypes) {
+                qCCritical(animation) << "AnimNodeLoader, bad easingType on stateMachine state, nodeId = " << nodeId << "stateId =" << id;
+                return false;
+            }
+        }
+
+        auto statePtr = std::make_shared<AnimStateMachine::State>(id, iter->second, interpTarget, interpDuration, interpTypeEnum, easingTypeEnum);
         assert(statePtr);
 
         if (!interpTargetVar.isEmpty()) {
@@ -778,6 +931,153 @@ bool processStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj,
     smNode->setCurrentState(iter->second);
 
     return true;
+}
+
+bool processRandomSwitchStateMachineNode(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& nodeId, const QUrl& jsonUrl) {
+    auto smNode = std::static_pointer_cast<AnimRandomSwitch>(node);
+    assert(smNode);
+
+    READ_STRING(currentState, jsonObj, nodeId, jsonUrl, false);
+    READ_OPTIONAL_FLOAT(randomSwitchTimeMin, jsonObj, -1.0f);
+    READ_OPTIONAL_FLOAT(randomSwitchTimeMax, jsonObj, -1.0f);
+    READ_OPTIONAL_STRING(triggerRandomSwitch, jsonObj);
+    READ_OPTIONAL_FLOAT(triggerTimeMin, jsonObj, -1.0f);
+    READ_OPTIONAL_FLOAT(triggerTimeMax, jsonObj, -1.0f);
+    READ_OPTIONAL_STRING(transitionVar, jsonObj);
+
+
+
+    auto statesValue = jsonObj.value("states");
+    if (!statesValue.isArray()) {
+        qCCritical(animation) << "AnimNodeLoader, bad array \"states\" in random switch state Machine node, id =" << nodeId;
+        return false;
+    }
+
+    // build a map for all children by name.
+    std::map<QString, int> childMap;
+    buildChildMap(childMap, node);
+
+    // first pass parse all the states and build up the state and transition map.
+    using StringPair = std::pair<QString, QString>;
+    using TransitionMap = std::multimap<AnimRandomSwitch::RandomSwitchState::Pointer, StringPair>;
+    TransitionMap transitionMap;
+
+    using RandomStateMap = std::map<QString, AnimRandomSwitch::RandomSwitchState::Pointer>;
+    RandomStateMap randomStateMap;
+
+    auto randomStatesArray = statesValue.toArray();
+    for (const auto& randomStateValue : randomStatesArray) {
+        if (!randomStateValue.isObject()) {
+            qCCritical(animation) << "AnimNodeLoader, bad state object in \"random states\", id =" << nodeId;
+            return false;
+        }
+        auto stateObj = randomStateValue.toObject();
+
+        READ_STRING(id, stateObj, nodeId, jsonUrl, false);
+        READ_FLOAT(interpTarget, stateObj, nodeId, jsonUrl, false);
+        READ_FLOAT(interpDuration, stateObj, nodeId, jsonUrl, false);
+        READ_OPTIONAL_STRING(interpType, stateObj);
+        READ_OPTIONAL_STRING(easingType, stateObj);
+        READ_FLOAT(priority, stateObj, nodeId, jsonUrl, false);
+        READ_BOOL(resume, stateObj, nodeId, jsonUrl, false);
+
+        READ_OPTIONAL_STRING(interpTargetVar, stateObj);
+        READ_OPTIONAL_STRING(interpDurationVar, stateObj);
+        READ_OPTIONAL_STRING(interpTypeVar, stateObj);
+
+        auto iter = childMap.find(id);
+        if (iter == childMap.end()) {
+            qCCritical(animation) << "AnimNodeLoader, could not find random stateMachine child (state) with nodeId =" << nodeId << "random stateId =" << id;
+            return false;
+        }
+
+        AnimRandomSwitch::InterpType interpTypeEnum = AnimRandomSwitch::InterpType::SnapshotPrev;  // default value
+        if (!interpType.isEmpty()) {
+            interpTypeEnum = stringToRandomInterpType(interpType);
+            if (interpTypeEnum == AnimRandomSwitch::InterpType::NumTypes) {
+                qCCritical(animation) << "AnimNodeLoader, bad interpType on random state Machine state, nodeId = " << nodeId << "random stateId =" << id;
+                return false;
+            }
+        }
+
+        EasingType easingTypeEnum = EasingType_Linear;  // default value
+        if (!easingType.isEmpty()) {
+            easingTypeEnum = stringToEasingType(easingType);
+            if (easingTypeEnum == EasingType_NumTypes) {
+                qCCritical(animation) << "AnimNodeLoader, bad easingType on randomSwitch state, nodeId = " << nodeId << "stateId =" << id;
+                return false;
+            }
+        }
+
+        auto randomStatePtr = std::make_shared<AnimRandomSwitch::RandomSwitchState>(id, iter->second, interpTarget, interpDuration, interpTypeEnum, easingTypeEnum, priority, resume);
+        assert(randomStatePtr);
+
+        if (!interpTargetVar.isEmpty()) {
+            randomStatePtr->setInterpTargetVar(interpTargetVar);
+        }
+        if (!interpDurationVar.isEmpty()) {
+            randomStatePtr->setInterpDurationVar(interpDurationVar);
+        }
+        if (!interpTypeVar.isEmpty()) {
+            randomStatePtr->setInterpTypeVar(interpTypeVar);
+        }
+
+        smNode->addState(randomStatePtr);
+        randomStateMap.insert(RandomStateMap::value_type(randomStatePtr->getID(), randomStatePtr));
+
+        auto transitionsValue = stateObj.value("transitions");
+        if (!transitionsValue.isArray()) {
+            qCritical(animation) << "AnimNodeLoader, bad array \"transitions\" in random state Machine node, stateId =" << id << "nodeId =" << nodeId;
+            return false;
+        }
+
+        auto transitionsArray = transitionsValue.toArray();
+        for (const auto& transitionValue : transitionsArray) {
+            if (!transitionValue.isObject()) {
+                qCritical(animation) << "AnimNodeLoader, bad transition object in \"transitions\", random stateId =" << id << "nodeId =" << nodeId;
+                return false;
+            }
+            auto transitionObj = transitionValue.toObject();
+
+            READ_STRING(var, transitionObj, nodeId, jsonUrl, false);
+            READ_STRING(randomSwitchState, transitionObj, nodeId, jsonUrl, false);
+
+            transitionMap.insert(TransitionMap::value_type(randomStatePtr, StringPair(var, randomSwitchState)));
+        }
+    }
+
+    // second pass: now iterate thru all transitions and add them to the appropriate states.
+    for (auto& transition : transitionMap) {
+        AnimRandomSwitch::RandomSwitchState::Pointer srcState = transition.first;
+        auto iter = randomStateMap.find(transition.second.second);
+        if (iter != randomStateMap.end()) {
+            srcState->addTransition(AnimRandomSwitch::RandomSwitchState::Transition(transition.second.first, iter->second));
+        } else {
+            qCCritical(animation) << "AnimNodeLoader, bad random state machine transition from srcState =" << srcState->_id << "dstState =" << transition.second.second << "nodeId =" << nodeId;
+            return false;
+        }
+    }
+
+    auto iter = randomStateMap.find(currentState);
+    if (iter == randomStateMap.end()) {
+        qCCritical(animation) << "AnimNodeLoader, bad currentState =" << currentState << "could not find child node" << "id =" << nodeId;
+    }
+    smNode->setCurrentState(iter->second);
+    smNode->setRandomSwitchTimeMin(randomSwitchTimeMin);
+    smNode->setRandomSwitchTimeMax(randomSwitchTimeMax);
+    smNode->setTriggerRandomSwitchVar(triggerRandomSwitch);
+    smNode->setTriggerTimeMin(triggerTimeMin);
+    smNode->setTriggerTimeMax(triggerTimeMax);
+    smNode->setTransitionVar(transitionVar);
+
+    return true;
+}
+
+bool processBlendDirectionalNode(AnimNode::Pointer node, const QJsonObject& jsonObj, const QString& nodeId, const QUrl& jsonUrl) {
+    auto blendNode = std::static_pointer_cast<AnimBlendDirectional>(node);
+    assert(blendNode);
+
+    return blendNode->lookupChildIds();
 }
 
 AnimNodeLoader::AnimNodeLoader(const QUrl& url) :

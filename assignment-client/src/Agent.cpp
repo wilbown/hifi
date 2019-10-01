@@ -52,6 +52,8 @@
 #include <WebSocketServerClass.h>
 #include <EntityScriptingInterface.h> // TODO: consider moving to scriptengine.h
 
+#include <hfm/ModelFormatRegistry.h>
+
 #include "entities/AssignmentParentFinder.h"
 #include "AssignmentDynamicFactory.h"
 #include "RecordingScriptingInterface.h"
@@ -102,6 +104,8 @@ Agent::Agent(ReceivedMessage& message) :
     DependencyManager::set<UsersScriptingInterface>();
 
     DependencyManager::set<Gym>();
+    DependencyManager::set<ModelFormatRegistry>();
+    DependencyManager::set<ModelCache>();
 
     // Needed to ensure the creation of the DebugDraw instance on the main thread
     DebugDraw::getInstance();
@@ -822,6 +826,9 @@ void Agent::aboutToFinish() {
     DependencyManager::get<EntityScriptingInterface>()->setEntityTree(nullptr);
 
     DependencyManager::get<ResourceManager>()->cleanup();
+
+    DependencyManager::destroy<ModelFormatRegistry>();
+    DependencyManager::destroy<ModelCache>();
 
     DependencyManager::destroy<PluginManager>();
 

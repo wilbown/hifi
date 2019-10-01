@@ -24,8 +24,6 @@
 
 class MeshPart;
 
-class GeometryMappingResource;
-
 using GeometryMappingPair = std::pair<QUrl, QVariantHash>;
 Q_DECLARE_METATYPE(GeometryMappingPair)
 
@@ -48,6 +46,7 @@ public:
     bool isHFMModelLoaded() const { return (bool)_hfmModel; }
 
     const HFMModel& getHFMModel() const { return *_hfmModel; }
+    const HFMModel::ConstPointer& getConstHFMModelPointer() const { return _hfmModel; }
     const MaterialMapping& getMaterialMapping() const { return _materialMapping; }
     const GeometryMeshes& getMeshes() const { return *_meshes; }
     const std::shared_ptr<NetworkMaterial> getShapeMaterial(int shapeID) const;
@@ -60,10 +59,8 @@ public:
     const QVariantHash& getMapping() const { return _mapping; }
 
 protected:
-    friend class GeometryMappingResource;
-
     // Shared across all geometries, constant throughout lifetime
-    std::shared_ptr<const HFMModel> _hfmModel;
+    HFMModel::ConstPointer _hfmModel;
     MaterialMapping _materialMapping;
     std::shared_ptr<const GeometryMeshes> _meshes;
     std::shared_ptr<const GeometryMeshParts> _meshParts;
@@ -80,23 +77,29 @@ private:
 
 /// A geometry loaded from the network.
 class GeometryResource : public Resource, public Geometry {
+    Q_OBJECT
 public:
     using Pointer = QSharedPointer<GeometryResource>;
 
-    GeometryResource(const QUrl& url) : Resource(url) {}
-    GeometryResource(const GeometryResource& other) :
-        Resource(other),
-        Geometry(other),
-        _textureBaseUrl(other._textureBaseUrl),
-        _isCacheable(other._isCacheable) {}
+    GeometryResource(const QUrl& url, const ModelLoader& modelLoader) : Resource(url), _modelLoader(modelLoader) {}
+    GeometryResource(const GeometryResource& other);
 
-    virtual bool areTexturesLoaded() const override { return isLoaded() && Geometry::areTexturesLoaded(); }
+    QString getType() const override { return "Geometry"; }
 
     virtual void deleter() override;
 
+    virtual void downloadFinished(const QByteArray& data) override;
+    void setExtra(void* extra) override;
+
+    virtual bool areTexturesLoaded() const override { return isLoaded() && Geometry::areTexturesLoaded(); }
+
+private slots:
+    void onGeometryMappingLoaded(bool success);
+
 protected:
     friend class ModelCache;
-    friend class GeometryMappingResource;
+
+    Q_INVOKABLE void setGeometryDefinition(HFMModel::Pointer hfmModel, const MaterialMapping& materialMapping);
 
     // Geometries may not hold onto textures while cached - that is for the texture cache
     // Instead, these methods clear and reset textures from the geometry when caching/loading
@@ -104,10 +107,18 @@ protected:
     void setTextures();
     void resetTextures();
 
-    QUrl _textureBaseUrl;
-
     virtual bool isCacheable() const override { return _loaded && _isCacheable; }
-    bool _isCacheable { true };
+
+private:
+    ModelLoader _modelLoader;
+    GeometryMappingPair _mappingPair;
+    QUrl _textureBaseURL;
+    bool _combineParts;
+
+    GeometryResource::Pointer _geometryResource;
+    QMetaObject::Connection _connection;
+
+    bool _isCacheable{ true };
 };
 
 class GeometryResourceWatcher : public QObject {
@@ -158,7 +169,7 @@ public:
                                                            const QUrl& textureBaseUrl = QUrl());
 
 protected:
-    friend class GeometryMappingResource;
+    friend class GeometryResource;
 
     virtual QSharedPointer<Resource> createResource(const QUrl& url) override;
     QSharedPointer<Resource> createResourceCopy(const QSharedPointer<Resource>& resource) override;

@@ -225,13 +225,15 @@ void Procedural::prepare(gpu::Batch& batch,
                          const glm::vec3& position,
                          const glm::vec3& size,
                          const glm::quat& orientation,
+                         const uint64_t& created,
                          const ProceduralProgramKey key) {
     std::lock_guard<std::mutex> lock(_mutex);
     _entityDimensions = size;
     _entityPosition = position;
     _entityOrientation = glm::mat3_cast(orientation);
+    _entityCreated = created;
     if (!_shaderPath.isEmpty()) {
-        auto lastModified = (quint64)QFileInfo(_shaderPath).lastModified().toMSecsSinceEpoch();
+        auto lastModified = (uint64_t)QFileInfo(_shaderPath).lastModified().toMSecsSinceEpoch();
         if (lastModified > _shaderModified) {
             QFile file(_shaderPath);
             file.open(QIODevice::ReadOnly);
@@ -262,12 +264,24 @@ void Procedural::prepare(gpu::Batch& batch,
         fragmentSource.replacements[PROCEDURAL_VERSION] = "#define PROCEDURAL_V" + std::to_string(_data.version);
         fragmentSource.replacements[PROCEDURAL_BLOCK] = _shaderSource.toStdString();
 
-        // Set any userdata specified uniforms
-        int customSlot = procedural::slot::uniform::Custom;
-        for (const auto& key : _data.uniforms.keys()) {
-            std::string uniformName = key.toLocal8Bit().data();
-            fragmentSource.reflection.uniforms[uniformName] = customSlot;
-            ++customSlot;
+        // Set any userdata specified uniforms (if any)
+        if (!_data.uniforms.empty()) {
+            // First grab all the possible dialect/variant/Reflections
+            std::vector<shader::Reflection*> allReflections;
+            for (auto dialectIt = fragmentSource.dialectSources.begin(); dialectIt != fragmentSource.dialectSources.end(); ++dialectIt) {
+                for (auto variantIt = (*dialectIt).second.variantSources.begin(); variantIt != (*dialectIt).second.variantSources.end(); ++variantIt) {
+                    allReflections.push_back(&(*variantIt).second.reflection);
+                }
+            }
+            // Then fill in every reflections the new custom bindings
+            int customSlot = procedural::slot::uniform::Custom;
+            for (const auto& key : _data.uniforms.keys()) {
+                std::string uniformName = key.toLocal8Bit().data();
+                for (auto reflection : allReflections) {
+                    reflection->uniforms[uniformName] = customSlot;
+                }
+                ++customSlot;
+            }
         }
 
         // Leave this here for debugging
@@ -278,11 +292,15 @@ void Procedural::prepare(gpu::Batch& batch,
 
         _proceduralPipelines[key] = gpu::Pipeline::create(program, key.isTransparent() ? _transparentState : _opaqueState);
 
-        _start = usecTimestampNow();
+        _lastCompile = usecTimestampNow();
+        if (_firstCompile == 0) {
+            _firstCompile = _lastCompile;
+        }
         _frameCount = 0;
         recompiledShader = true;
     }
 
+    // FIXME: need to handle forward rendering
     batch.setPipeline(recompiledShader ? _proceduralPipelines[key] : pipeline->second);
 
     if (_shaderDirty || _uniformsDirty) {
@@ -371,7 +389,11 @@ void Procedural::setupUniforms() {
     _uniforms.push_back([=](gpu::Batch& batch) {
         _standardInputs.position = vec4(_entityPosition, 1.0f);
         // Minimize floating point error by doing an integer division to milliseconds, before the floating point division to seconds
-        _standardInputs.time = (float)((usecTimestampNow() - _start) / USECS_PER_MSEC) / MSECS_PER_SECOND;
+        auto now = usecTimestampNow();
+        _standardInputs.timeSinceLastCompile = (float)((now - _lastCompile) / USECS_PER_MSEC) / MSECS_PER_SECOND;
+        _standardInputs.timeSinceFirstCompile = (float)((now - _firstCompile) / USECS_PER_MSEC) / MSECS_PER_SECOND;
+        _standardInputs.timeSinceEntityCreation = (float)((now - _entityCreated) / USECS_PER_MSEC) / MSECS_PER_SECOND;
+
 
         // Date
         {

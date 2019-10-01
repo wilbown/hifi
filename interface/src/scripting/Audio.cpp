@@ -26,6 +26,7 @@ QString Audio::HMD { "VR" };
 
 Setting::Handle<bool> enableNoiseReductionSetting { QStringList { Audio::AUDIO, "NoiseReduction" }, true };
 Setting::Handle<bool> enableWarnWhenMutedSetting { QStringList { Audio::AUDIO, "WarnWhenMuted" }, true };
+Setting::Handle<bool> enableAcousticEchoCancellationSetting { QStringList { Audio::AUDIO, "AcousticEchoCancellation" }, true };
 
 
 float Audio::loudnessToLevel(float loudness) {
@@ -40,12 +41,14 @@ Audio::Audio() : _devices(_contextIsHMD) {
     connect(client, &AudioClient::muteToggled, this, &Audio::setMuted);
     connect(client, &AudioClient::noiseReductionChanged, this, &Audio::enableNoiseReduction);
     connect(client, &AudioClient::warnWhenMutedChanged, this, &Audio::enableWarnWhenMuted);
+    connect(client, &AudioClient::acousticEchoCancellationChanged, this, &Audio::enableAcousticEchoCancellation);
     connect(client, &AudioClient::inputLoudnessChanged, this, &Audio::onInputLoudnessChanged);
     connect(client, &AudioClient::inputVolumeChanged, this, &Audio::setInputVolume);
     connect(this, &Audio::contextChanged, &_devices, &AudioDevices::onContextChanged);
     connect(this, &Audio::pushingToTalkChanged, this, &Audio::handlePushedToTalk);
     enableNoiseReduction(enableNoiseReductionSetting.get());
     enableWarnWhenMuted(enableWarnWhenMutedSetting.get());
+    enableAcousticEchoCancellation(enableAcousticEchoCancellationSetting.get());
     onContextChanged();
 }
 
@@ -87,45 +90,63 @@ void Audio::setMuted(bool isMuted) {
 
 void Audio::setMutedDesktop(bool isMuted) {
     bool changed = false;
+    bool isHMD = qApp->isHMDMode();
     withWriteLock([&] {
-        if (_desktopMuted != isMuted) {
+        if (_mutedDesktop != isMuted) {
             changed = true;
-            _desktopMuted = isMuted;
-            auto client = DependencyManager::get<AudioClient>().data();
-            QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted), Q_ARG(bool, false));
+            _mutedDesktop = isMuted;
+            if (!isHMD) {
+                auto client = DependencyManager::get<AudioClient>().data();
+                QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted), Q_ARG(bool, false));
+            }
         }
     });
+    if (!isMuted && _settingsLoaded && !_pushingToTalk) {
+        // If the user is not pushing to talk and muted is changed to false, disable Push-To-Talk. Settings also need to be loaded.
+        setPTTDesktop(isMuted);
+    }
     if (changed) {
-        emit mutedChanged(isMuted);
-        emit desktopMutedChanged(isMuted);
+        if (!isHMD) {
+            emit mutedChanged(isMuted);
+        }
+        emit mutedDesktopChanged(isMuted);
     }
 }
 
 bool Audio::getMutedDesktop() const {
     return resultWithReadLock<bool>([&] {
-        return _desktopMuted;
+        return _mutedDesktop;
     });
 }
 
 void Audio::setMutedHMD(bool isMuted) {
     bool changed = false;
+    bool isHMD = qApp->isHMDMode();
     withWriteLock([&] {
-        if (_hmdMuted != isMuted) {
+        if (_mutedHMD != isMuted) {
             changed = true;
-            _hmdMuted = isMuted;
-            auto client = DependencyManager::get<AudioClient>().data();
-            QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted), Q_ARG(bool, false));
+            _mutedHMD = isMuted;
+            if (isHMD) {
+                auto client = DependencyManager::get<AudioClient>().data();
+                QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted), Q_ARG(bool, false));
+            }
         }
     });
+    if (!isMuted && _settingsLoaded && !_pushingToTalk) {
+        // If the user is not pushing to talk and muted is changed to false, disable Push-To-Talk. Settings also need to be loaded.
+        setPTTHMD(isMuted);
+    }
     if (changed) {
-        emit mutedChanged(isMuted);
-        emit hmdMutedChanged(isMuted);
+        if (isHMD) {
+            emit mutedChanged(isMuted);
+        }
+        emit mutedHMDChanged(isMuted);
     }
 }
 
 bool Audio::getMutedHMD() const {
     return resultWithReadLock<bool>([&] {
-        return _hmdMuted;
+        return _mutedHMD;
     });
 }
 
@@ -174,14 +195,10 @@ void Audio::setPTTDesktop(bool enabled) {
             _pttDesktop = enabled;
         }
     });
-    if (!enabled) {
-        // Set to default behavior (unmuted for Desktop) on Push-To-Talk disable.
-        setMutedDesktop(true);
-    } else {
-        // Should be muted when not pushing to talk while PTT is enabled.
-        setMutedDesktop(true);
+    if (enabled && _settingsLoaded) {
+        // Set to default behavior (muted for Desktop) on Push-To-Talk disable or when enabled. Settings also need to be loaded.
+        setMutedDesktop(enabled);
     }
-
     if (changed) {
         emit pushToTalkChanged(enabled);
         emit pushToTalkDesktopChanged(enabled);
@@ -202,12 +219,9 @@ void Audio::setPTTHMD(bool enabled) {
             _pttHMD = enabled;
         }
     });
-    if (!enabled) {
-        // Set to default behavior (unmuted for HMD) on Push-To-Talk disable.
-        setMutedHMD(false);
-    } else {
-        // Should be muted when not pushing to talk while PTT is enabled.
-        setMutedHMD(true);
+    if (enabled && _settingsLoaded) {
+        // Set to default behavior (unmuted for HMD) on Push-To-Talk disable or muted for when PTT is enabled.
+        setMutedHMD(enabled);
     }
 
     if (changed) {
@@ -217,20 +231,31 @@ void Audio::setPTTHMD(bool enabled) {
 }
 
 void Audio::saveData() {
-    _desktopMutedSetting.set(getMutedDesktop());
-    _hmdMutedSetting.set(getMutedHMD());
+    _avatarGainSetting.set(getAvatarGain());
+    _injectorGainSetting.set(getInjectorGain());
+    _localInjectorGainSetting.set(getLocalInjectorGain());
+    _systemInjectorGainSetting.set(getSystemInjectorGain());
+
+    _mutedDesktopSetting.set(getMutedDesktop());
+    _mutedHMDSetting.set(getMutedHMD());
     _pttDesktopSetting.set(getPTTDesktop());
     _pttHMDSetting.set(getPTTHMD());
 }
 
 void Audio::loadData() {
-    _desktopMuted = _desktopMutedSetting.get();
-    _hmdMuted = _hmdMutedSetting.get();
-    _pttDesktop = _pttDesktopSetting.get();
-    _pttHMD = _pttHMDSetting.get();
+    setAvatarGain(_avatarGainSetting.get());
+    setInjectorGain(_injectorGainSetting.get());
+    setLocalInjectorGain(_localInjectorGainSetting.get());
+    setSystemInjectorGain(_systemInjectorGainSetting.get());
+
+    setMutedDesktop(_mutedDesktopSetting.get());
+    setMutedHMD(_mutedHMDSetting.get());
+    setPTTDesktop(_pttDesktopSetting.get());
+    setPTTHMD(_pttHMDSetting.get());
 
     auto client = DependencyManager::get<AudioClient>().data();
     QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted()), Q_ARG(bool, false));
+    _settingsLoaded = true;
 }
 
 bool Audio::getPTTHMD() const {
@@ -280,6 +305,28 @@ void Audio::enableWarnWhenMuted(bool enable) {
     });
     if (changed) {
         emit warnWhenMutedChanged(enable);
+    }
+}
+
+bool Audio::acousticEchoCancellationEnabled() const {
+    return resultWithReadLock<bool>([&] {
+        return _enableAcousticEchoCancellation;
+    });
+}
+
+void Audio::enableAcousticEchoCancellation(bool enable) {
+    bool changed = false;
+    withWriteLock([&] {
+        if (_enableAcousticEchoCancellation != enable) {
+            _enableAcousticEchoCancellation = enable;
+            auto client = DependencyManager::get<AudioClient>().data();
+            QMetaObject::invokeMethod(client, "setAcousticEchoCancellation", Q_ARG(bool, enable), Q_ARG(bool, false));
+            enableAcousticEchoCancellationSetting.set(enable);
+            changed = true;
+        }
+    });
+    if (changed) {
+        emit acousticEchoCancellationChanged(enable);
     }
 }
 
@@ -357,24 +404,52 @@ void Audio::onContextChanged() {
             changed = true;
         }
     });
-    if (isHMD) {
-        setMuted(getMutedHMD());
-    } else {
-        setMuted(getMutedDesktop());
+
+    if (_settingsLoaded) {
+        bool isMuted = isHMD ? getMutedHMD() : getMutedDesktop();
+        setMuted(isMuted);
+        // always set audio client muted state on context changed - sometimes setMuted does not catch it.
+        auto client = DependencyManager::get<AudioClient>().data();
+        QMetaObject::invokeMethod(client, "setMuted", Q_ARG(bool, isMuted), Q_ARG(bool, false));
     }
     if (changed) {
         emit contextChanged(isHMD ? Audio::HMD : Audio::DESKTOP);
+
+        bool mutedHMD = getMutedHMD();
+        bool mutedDesktop = getMutedDesktop();
+        if (mutedHMD != mutedDesktop) {
+            emit mutedChanged(isHMD ? mutedHMD : mutedDesktop);
+        }
     }
 }
 
 void Audio::handlePushedToTalk(bool enabled) {
     if (getPTT()) {
         if (enabled) {
+            if (!qApp->isHMDMode()) {
+                float gain = resultWithReadLock<float>([&] { return _pttOutputGainDesktop; });
+                // convert dB to amplitude
+                gain = fastExp2f(gain / 6.02059991f);
+                DependencyManager::get<AudioClient>()->setOutputGain(gain);  // duck the output by N dB
+            }
             setMuted(false);
         } else {
+            DependencyManager::get<AudioClient>()->setOutputGain(1.0f);
             setMuted(true);
         }
     }
+}
+
+void Audio::setInputDevice(const QAudioDeviceInfo& device, bool isHMD) {
+    withWriteLock([&] {
+        _devices.chooseInputDevice(device, isHMD);
+    });
+}
+
+void Audio::setOutputDevice(const QAudioDeviceInfo& device, bool isHMD) {
+    withWriteLock([&] {
+        _devices.chooseOutputDevice(device, isHMD);
+    });
 }
 
 void Audio::setReverb(bool enable) {
@@ -389,14 +464,129 @@ void Audio::setReverbOptions(const AudioEffectOptions* options) {
     });
 }
 
-void Audio::setInputDevice(const QAudioDeviceInfo& device, bool isHMD) {
+void Audio::setAvatarGain(float gain) {
+    bool changed = false;
+    if (getAvatarGain() != gain) {
+        changed = true;
+    }
+
     withWriteLock([&] {
-        _devices.chooseInputDevice(device, isHMD);
+        // ask the NodeList to set the master avatar gain
+        DependencyManager::get<NodeList>()->setAvatarGain(QUuid(), gain);
+    });
+
+    if (changed) {
+        emit avatarGainChanged(gain);
+    }
+}
+
+float Audio::getAvatarGain() {
+    return resultWithReadLock<float>([&] {
+        return DependencyManager::get<NodeList>()->getAvatarGain(QUuid());
     });
 }
 
-void Audio::setOutputDevice(const QAudioDeviceInfo& device, bool isHMD) {
+void Audio::setInjectorGain(float gain) {
+    bool changed = false;
+    if (getInjectorGain() != gain) {
+        changed = true;
+    }
+
     withWriteLock([&] {
-        _devices.chooseOutputDevice(device, isHMD);
+        // ask the NodeList to set the audio injector gain
+        DependencyManager::get<NodeList>()->setInjectorGain(gain);
     });
+
+    if (changed) {
+        emit serverInjectorGainChanged(gain);
+    }
+}
+
+float Audio::getInjectorGain() {
+    return resultWithReadLock<float>([&] {
+        return DependencyManager::get<NodeList>()->getInjectorGain();
+    });
+}
+
+void Audio::setLocalInjectorGain(float gain) {
+    bool changed = false;
+    if (getLocalInjectorGain() != gain) {
+        changed = true;
+    }
+
+    withWriteLock([&] {
+        if (_localInjectorGain != gain) {
+            _localInjectorGain = gain;
+            // convert dB to amplitude
+            gain = fastExp2f(gain / 6.02059991f);
+            // quantize and limit to match NodeList::setInjectorGain()
+            gain = unpackFloatGainFromByte(packFloatGainToByte(gain));
+            DependencyManager::get<AudioClient>()->setLocalInjectorGain(gain);
+        }
+    });
+
+
+    if (changed) {
+        emit localInjectorGainChanged(gain);
+    }
+}
+
+float Audio::getLocalInjectorGain() {
+    return resultWithReadLock<float>([&] {
+        return _localInjectorGain;
+    });
+}
+
+void Audio::setSystemInjectorGain(float gain) {
+    bool changed = false;
+    if (getSystemInjectorGain() != gain) {
+        changed = true;
+    }
+
+    withWriteLock([&] {
+        if (_systemInjectorGain != gain) {
+            _systemInjectorGain = gain;
+            // convert dB to amplitude
+            gain = fastExp2f(gain / 6.02059991f);
+            // quantize and limit to match NodeList::setInjectorGain()
+            gain = unpackFloatGainFromByte(packFloatGainToByte(gain));
+            DependencyManager::get<AudioClient>()->setSystemInjectorGain(gain);
+        }
+    });
+
+    if (changed) {
+        emit systemInjectorGainChanged(gain);
+    }
+}
+
+float Audio::getSystemInjectorGain() {
+    return resultWithReadLock<float>([&] {
+        return _systemInjectorGain;
+    });
+}
+
+void Audio::setPushingToTalkOutputGainDesktop(float gain) {
+    if (gain > 0.0f) {
+        qDebug() << "Denying attempt to set Pushing to Talk Output Gain above 0dB. Attempted value:" << gain;
+        return;
+    }
+
+    bool changed = false;
+    if (getPushingToTalkOutputGainDesktop() != gain) {
+        changed = true;
+    }
+
+    withWriteLock([&] {
+        if (_pttOutputGainDesktop != gain) {
+            _pttOutputGainDesktop = gain;
+        }
+    });
+
+    if (changed) {
+        emit pushingToTalkOutputGainDesktopChanged(gain);
+    }
+}
+
+float Audio::getPushingToTalkOutputGainDesktop() {
+    return resultWithReadLock<float>([&] { return _pttOutputGainDesktop; });
 }

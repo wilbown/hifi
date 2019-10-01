@@ -16,6 +16,8 @@
 #include <QtCore/QRegularExpression>
 #include <QProgressBar>
 
+#include <platform/Profiler.h>
+
 #include "AWSInterface.h"
 #include "ImageComparer.h"
 #include "Downloader.h"
@@ -29,6 +31,20 @@ public:
 };
 
 using StepList = std::vector<Step*>;
+
+class TestFilter {
+public:
+    TestFilter(const QString& filterString);
+    bool isValid() const;
+    QString getError() const;
+
+    std::vector<QString> allowedTiers;
+    std::vector<QString> allowedOperatingSystems;
+    std::vector<QString> allowedGPUs;
+
+protected:
+    QString error;
+};
 
 class ExtractedText {
 public:
@@ -45,13 +61,16 @@ class TestCreator {
 public: 
     TestCreator(QProgressBar* progressBar, QCheckBox* checkBoxInteractiveMode);
 
-    void startTestsEvaluation(const bool isRunningFromCommandLine,
-                              const bool isRunningInAutomaticTestRun, 
-                              const QString& snapshotDirectory = QString(),
-                              const QString& branchFromCommandLine = QString(),
-                              const QString& userFromCommandLine = QString());
+    void startTestsEvaluation(
+        QComboBox *gpuVendor,
+        const bool isRunningFromCommandLine,
+        const bool isRunningInAutomaticTestRun, 
+        const QString& snapshotDirectory = QString(),
+        const QString& branchFromCommandLine = QString(),
+        const QString& userFromCommandLine = QString()
+    );
 
-    void finishTestsEvaluation();
+    void finishTestsEvaluation(const QString& gpuVendor);
 
     void createTests(const QString& clientProfile);
 
@@ -79,7 +98,7 @@ public:
     void createRecursiveScript();
     void createRecursiveScript(const QString& directory, bool interactiveMode);
 
-    int compareImageLists();
+    int compareImageLists(const QString& gpuVendor);
     int checkTextResults();
 
     QStringList createListOfAll_imagesInDirectory(const QString& imageFormat, const QString& pathToImageDirectory);
@@ -107,7 +126,10 @@ public:
         QCheckBox* updateAWSCheckBox, 
         QRadioButton* diffImageRadioButton,
         QRadioButton* ssimImageRadionButton,
-        QLineEdit* urlLineEdit);
+        QLineEdit* urlLineEdit,
+        const QString& branch,
+        const QString& user
+    );
 
 private:
     QProgressBar* _progressBar;
@@ -120,8 +142,6 @@ private:
     const QString TEST_RECURSIVE_FILENAME{ "testRecursive.js" };
     const QString TEST_RESULTS_FOLDER { "TestResults" };
     const QString TEST_RESULTS_FILENAME { "TestResults.txt" };
-
-    const double THRESHOLD{ 0.9999 };
 
     QDir _imageDirectory;
 

@@ -49,8 +49,6 @@ class LineEntityItem : public EntityItem {
 
     QVector<glm::vec3> getLinePoints() const;
 
-    virtual ShapeType getShapeType() const override { return SHAPE_TYPE_NONE; }
-
     // never have a ray intersection pick a LineEntityItem.
     virtual bool supportsDetailedIntersection() const override { return true; }
     virtual bool findDetailedRayIntersection(const glm::vec3& origin, const glm::vec3& direction,
@@ -63,15 +61,13 @@ class LineEntityItem : public EntityItem {
                                                   BoxFace& face, glm::vec3& surfaceNormal,
                                                   QVariantMap& extraInfo,
                                                   bool precisionPicking) const override { return false; }
-    bool pointsChanged() const { return _pointsChanged; }
-    void resetPointsChanged();
+
     virtual void debugDump() const override;
     static const int MAX_POINTS_PER_LINE;
 
  private:
     glm::u8vec3 _color;
     QVector<glm::vec3> _points;
-    bool _pointsChanged { true };
 };
 
 #endif // hifi_LineEntityItem_h

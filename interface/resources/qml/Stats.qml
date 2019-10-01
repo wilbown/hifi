@@ -58,6 +58,14 @@ Item {
                         text: "Avatars: " + root.avatarCount
                     }
                     StatText {
+                        visible: true
+                        text: "Refresh: " + root.refreshRateRegime + " - " + root.refreshRateTarget
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text:"    " + root.refreshRateMode + " - " + root.uxMode;
+                    }
+                    StatText {
                         text: "Game Rate: " + root.gameLoopRate
                     }
                     StatText {
@@ -138,6 +146,17 @@ Item {
                                     "Rays:\t" + root.rayPicksUpdated.x + "/" + root.rayPicksUpdated.y + "/" + root.rayPicksUpdated.z + "\n    " +
                                     "Parabolas:\t" + root.parabolaPicksUpdated.x + "/" + root.parabolaPicksUpdated.y + "/" + root.parabolaPicksUpdated.z + "\n    " +
                                     "Colliders:\t" + root.collisionPicksUpdated.x + "/" + root.collisionPicksUpdated.y + "/" + root.collisionPicksUpdated.z
+                    }
+                    StatText {
+                        visible: { root.eventQueueDebuggingOn && root.expanded }
+                        text: { if (root.eventQueueDebuggingOn) {
+                                    return "Event Queue Depth\n    " +
+                                        "Main:\t" + root.mainThreadQueueDepth + "\n" +
+                                        "NodeList:\t" + root.nodeListThreadQueueDepth;
+                                } else {
+                                    return "";
+                                }
+                            }
                     }
                 }
             }
@@ -234,7 +253,40 @@ Item {
                     }
                     StatText {
                         visible: root.expanded;
+                        text: "Injectors (Local/NonLocal): " + root.audioInjectors.x + "/" + root.audioInjectors.y;
+                    }
+                    StatText {
+                        visible: root.expanded;
                         text: "Entity Servers In: " + root.entityPacketsInKbps + " kbps";
+                    }
+                    StatText {
+                        visible: !root.expanded
+                        text: "Octree Elements Server: " + root.serverElements +
+                            " Local: " + root.localElements;
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text: "Octree Sending Mode: " + root.sendingMode;
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text: "Octree Packets to Process: " + root.packetStats;
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text: "Octree Elements - ";
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text: "\tServer: " + root.serverElements +
+                            " Internal: " + root.serverInternal +
+                            " Leaves: " + root.serverLeaves;
+                    }
+                    StatText {
+                        visible: root.expanded
+                        text: "\tLocal: " + root.localElements +
+                            " Internal: " + root.localInternal +
+                            " Leaves: " + root.localLeaves;
                     }
                     StatText {
                         visible: root.expanded;
@@ -288,10 +340,13 @@ Item {
                         text: "GPU: " + root.gpuFrameTime.toFixed(1) + " ms"
                     }                    
                     StatText {
-                        text: "GPU (Per pixel): " + root.gpuFrameTimePerPixel.toFixed(5) + " ns/pp"
+                        text: "GPU (Per pixel): " + root.gpuFrameTimePerPixel.toFixed(1) + " ns/pp"
                     }                    
                     StatText {
-                        text: "GPU frame size: " + root.gpuFrameSize.x + " x " + root.gpuFrameSize.y
+                        text: "GPU frame size: " + root.gpuFrameSize.x.toFixed(0) + " x " + root.gpuFrameSize.y.toFixed(0)
+                    }
+                    StatText {
+                        text: "LOD Target: " + root.lodTargetFramerate + " Hz Angle: " + root.lodAngle + " deg"
                     }
                     StatText {
                         text: "Drawcalls: " + root.drawcalls
@@ -377,35 +432,6 @@ Item {
                         visible: root.expanded;
                         text: " out of view: " + root.shadowOutOfView +
                             " too small: " + root.shadowTooSmall;
-                    }
-                    StatText {
-                        visible: !root.expanded
-                        text: "Octree Elements Server: " + root.serverElements +
-                            " Local: " + root.localElements;
-                    }
-                    StatText {
-                        visible: root.expanded
-                        text: "Octree Sending Mode: " + root.sendingMode;
-                    }
-                    StatText {
-                        visible: root.expanded
-                        text: "Octree Packets to Process: " + root.packetStats;
-                    }
-                    StatText {
-                        visible: root.expanded
-                        text: "Octree Elements - ";
-                    }
-                    StatText {
-                        visible: root.expanded
-                        text: "\tServer: " + root.serverElements +
-                            " Internal: " + root.serverInternal +
-                            " Leaves: " + root.serverLeaves;
-                    }
-                    StatText {
-                        visible: root.expanded
-                        text: "\tLocal: " + root.localElements +
-                            " Internal: " + root.localInternal +
-                            " Leaves: " + root.localLeaves;
                     }
                     StatText {
                         visible: root.expanded

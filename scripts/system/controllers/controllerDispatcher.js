@@ -12,7 +12,7 @@
    LEFT_HAND, RIGHT_HAND, NEAR_GRAB_PICK_RADIUS, DEFAULT_SEARCH_SPHERE_DISTANCE, DISPATCHER_PROPERTIES,
    getGrabPointSphereOffset, HMD, MyAvatar, Messages, findHandChildEntities, Picks, PickType, Pointers,
    PointerManager, getGrabPointSphereOffset, HMD, MyAvatar, Messages, findHandChildEntities, Picks, PickType, Pointers,
-   PointerManager, print, Selection, DISPATCHER_HOVERING_LIST, DISPATCHER_HOVERING_STYLE, Keyboard
+   PointerManager, print, Keyboard
 */
 
 controllerDispatcherPlugins = {};
@@ -53,6 +53,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
         this.blacklist = [];
         this.pointerManager = new PointerManager();
         this.grabSphereOverlays = [null, null];
+        this.targetIDs = {};
 
         // a module can occupy one or more "activity" slots while it's running.  If all the required slots for a module are
         // not set to false (not in use), a module cannot start.  When a module is using a slot, that module's name
@@ -225,8 +226,8 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                         if (tabletIndex !== -1 && closebyOverlays.indexOf(HMD.tabletID) === -1) {
                             nearbyOverlays.splice(tabletIndex, 1);
                         }
-                        if (miniTabletIndex !== -1
-                                && ((closebyOverlays.indexOf(HMD.miniTabletID) === -1) || h !== HMD.miniTabletHand)) {
+                        if (miniTabletIndex !== -1 &&
+                            ((closebyOverlays.indexOf(HMD.miniTabletID) === -1) || h !== HMD.miniTabletHand)) {
                             nearbyOverlays.splice(miniTabletIndex, 1);
                         }
                     }
@@ -284,6 +285,21 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                 }
             }
 
+            // Enable/disable controller raypicking depending on whether we are in HMD
+            if (HMD.active) {
+                Pointers.enablePointer(_this.leftPointer);
+                Pointers.enablePointer(_this.rightPointer);
+                Pointers.enablePointer(_this.leftHudPointer);
+                Pointers.enablePointer(_this.rightHudPointer);
+                Pointers.enablePointer(_this.mouseRayPointer);
+            } else {
+                Pointers.disablePointer(_this.leftPointer);
+                Pointers.disablePointer(_this.rightPointer);
+                Pointers.disablePointer(_this.leftHudPointer);
+                Pointers.disablePointer(_this.rightHudPointer);
+                Pointers.disablePointer(_this.mouseRayPointer);
+            }
+
             // raypick for each controller
             var rayPicks = [
                 Pointers.getPrevPickResult(_this.leftPointer),
@@ -293,7 +309,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                 Pointers.getPrevPickResult(_this.leftHudPointer),
                 Pointers.getPrevPickResult(_this.rightHudPointer)
             ];
-            var mouseRayPick = Pointers.getPrevPickResult(_this.mouseRayPick);
+            var mouseRayPointer = Pointers.getPrevPickResult(_this.mouseRayPointer);
             // if the pickray hit something very nearby, put it into the nearby entities list
             for (h = LEFT_HAND; h <= RIGHT_HAND; h++) {
 
@@ -336,6 +352,23 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                 });
             }
 
+            // also make sure we have the properties from the current module's target
+            for (var tIDRunningPluginName in _this.runningPluginNames) {
+                if (_this.runningPluginNames.hasOwnProperty(tIDRunningPluginName)) {
+                    var targetIDs = _this.targetIDs[tIDRunningPluginName];
+                    if (targetIDs) {
+                        for (var k = 0; k < targetIDs.length; k++) {
+                            var targetID = targetIDs[k];
+                            if (!nearbyEntityPropertiesByID[targetID]) {
+                                var targetProps = Entities.getEntityProperties(targetID, DISPATCHER_PROPERTIES);
+                                targetProps.id = targetID;
+                                nearbyEntityPropertiesByID[targetID] = targetProps;
+                            }
+                        }
+                    }
+                }
+            }
+
             // bundle up all the data about the current situation
             var controllerData = {
                 triggerValues: [_this.leftTriggerValue, _this.rightTriggerValue],
@@ -347,7 +380,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                 nearbyOverlayIDs: nearbyOverlayIDs,
                 rayPicks: rayPicks,
                 hudRayPicks: hudRayPicks,
-                mouseRayPick: mouseRayPick
+                mouseRayPointer: mouseRayPointer
             };
             if (PROFILE) {
                 Script.endProfileRange("dispatch.gather");
@@ -402,10 +435,23 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                             Script.beginProfileRange("dispatch.run." + runningPluginName);
                         }
                         var runningness = plugin.run(controllerData, deltaTime);
+
+                        if (DEBUG) {
+                            if (JSON.stringify(_this.targetIDs[runningPluginName]) != JSON.stringify(runningness.targets)) {
+                                print("controllerDispatcher targetIDs[" + runningPluginName + "] = " +
+                                      JSON.stringify(runningness.targets));
+                            }
+                        }
+
+                        _this.targetIDs[runningPluginName] = runningness.targets;
                         if (!runningness.active) {
                             // plugin is finished running, for now.  remove it from the list
                             // of running plugins and mark its activity-slots as "not in use"
                             delete _this.runningPluginNames[runningPluginName];
+                            delete _this.targetIDs[runningPluginName];
+                            if (DEBUG) {
+                                print("controllerDispatcher deleted targetIDs[" + runningPluginName + "]");
+                            }
                             _this.markSlots(plugin, false);
                             _this.pointerManager.makePointerInvisible(plugin.parameters.handLaser);
                             if (DEBUG) {
@@ -499,7 +545,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
             hand: RIGHT_HAND
         });
 
-        this.mouseRayPick = Pointers.createPointer(PickType.Ray, {
+        this.mouseRayPointer = Pointers.createPointer(PickType.Ray, {
             joint: "Mouse",
             filter: Picks.PICK_OVERLAYS | Picks.PICK_ENTITIES | Picks.PICK_INCLUDE_NONCOLLIDABLE,
             enabled: true
@@ -527,8 +573,9 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
                         }
 
                         if (action === "tablet") {
-                            var tabletIDs = message.blacklist
-                                ? [HMD.tabletID, HMD.tabletScreenID, HMD.homeButtonID, HMD.homeButtonHighlightID] : [];
+                            var tabletIDs = message.blacklist ?
+                                [HMD.tabletID, HMD.tabletScreenID, HMD.homeButtonID, HMD.homeButtonHighlightID] :
+                                [];
                             if (message.hand === LEFT_HAND) {
                                 _this.leftBlacklistTabletIDs = tabletIDs;
                                 _this.setLeftBlacklist();
@@ -547,7 +594,7 @@ Script.include("/~/system/libraries/controllerDispatcherUtils.js");
         this.cleanup = function () {
             Controller.disableMapping(MAPPING_NAME);
             _this.pointerManager.removePointers();
-            Pointers.removePointer(this.mouseRayPick);
+            Pointers.removePointer(this.mouseRayPointer);
         };
     }
 

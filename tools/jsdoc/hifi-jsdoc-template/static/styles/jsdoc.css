@@ -4,8 +4,13 @@
 ********************************************************************/
 
 @font-face{
-	font-family: 'Cairo';
-	src: url('../fonts/Cairo-Bold.ttf') format('truetype');
+	font-family: 'Graphik Semibold';
+	src: url('../fonts/Graphik-SemiBold.otf') format('opentype');
+}
+
+@font-face{
+	font-family: 'Graphik Regular';
+	src: url('../fonts/Graphik-Regular.otf') format('opentype');
 }
 
 @font-face{
@@ -29,12 +34,15 @@ html
 
 body
 {
-    font-family: 'Proxima Nova', sans-serif;
-    font-size: 1rem;
-    line-height: 1.5;
-    letter-spacing: 0.5px;
-    margin: 1.5rem;
-    color: #555;
+	font-family: 'Graphik Regular', 'Proxima Nova', arial, sans-serif;
+	font-weight: 400; 
+    color: #000000;
+    letter-spacing: 0.5px;  
+}
+
+p {
+    font-size: 0.95rem;
+    line-height: 20px;
 }
 
 section
@@ -50,14 +58,13 @@ section
 ********************************************************************/
 
 h1, h2, h3, h4 {
-	font-family: "Cairo", Helvetica, sans-serif;
+	font-family: "Graphik Semibold", Helvetica, sans-serif;
 }
 
 h1
 {
     font-size: 3.25rem;
     text-align: center;
-    letter-spacing: 1.5px;
     margin: 50px 25px 25px;
 }
 
@@ -69,15 +76,13 @@ h2
 
 h3
 {
-    font-size: 1.5rem;
+    font-size: 28px;
 }
 
 h4
 {
-    font-size: 18px;
-    letter-spacing: -0.33px;
-    margin-bottom: 12px;
-    color: #4d4e53;
+    font-family: 'Graphik Regular';
+	font-size: 1.03rem;
 }
 
 h6
@@ -113,64 +118,67 @@ h5, .container-overview .subsection-title
 **************************** Table styles **************************
 ********************************************************************/
 
-table
-{
-    width: 100%;
-    background-color: #fff;
+table {
     border-collapse: collapse;
-    border-spacing: 0;
-    border: 1px solid #ccc;
-    text-align: left;
-    overflow: auto;
-    font-size: 0.9rem;
-    line-height: 1.5;
+    border: solid #d8e1d9 1px;
     margin-bottom: 1.5rem;
+    width: 100%
 }
 
-table > thead {
-    background-color: #ddd;
-    border-bottom: 1px solid #ccc;
-    font-weight: 400;
-}
-
-table th, table td {
-    padding: 0.5rem;
-    border-left: 1px solid #ccc;
+thead {
+    border-color: #d8e1d9;
+    background:#d8e1d9;
+    text-align: left;    
 }
 
 table tr {
-    border-bottom: 1px solid #ccc;
+    border-bottom: 1px solid #d8e1d9;
 }
 
 table tr:nth-child(even) {
     background-color: #f8f8f8;
 }
 
+td {
+    border: solid #c7cccb 1px;
+}
+
+article table thead tr th, article table tbody tr td, article table tbody tr td p {
+    font-size: .89rem;
+    line-height: 20px;
+}
+
+article table thead tr th, article table tbody tr td {
+    padding: 0.5rem;
+}
+
+article table tbody tr td ul li {
+    font-size: .89rem;
+}
+
 /*******************************************************************
 ****************************** Link styles *************************
 ********************************************************************/
 
-a, a:visited, a:active {
-  color: #1694CA;
-  text-decoration: none;
+a, a:hover, a:active, a:visited {
+    text-decoration: none;
 }
 
-article a:hover {
-  color: #0e6185;
-  text-decoration: none;
-  font-weight: bold;
+#main a, #main a:visited, #main a:active, #main a:hover {
+  color: #009ee0;
 }
-
 
 /*******************************************************************
 ***************************** List styles **************************
 ********************************************************************/
 
 article ul {
-    margin-bottom: 1.7em;
+    margin-bottom: 1em;
 }
 
 article li {
+    font-size: .95rem;
+    line-height: 20px;
     padding-bottom: 5px;
 }
 
@@ -180,16 +188,22 @@ article li {
 
 nav {
     position: fixed;
-    top: 165px;
+    top: 260px;
     bottom: 0;
     left: 0;
     right: 0;
-    width: 305px;
+    width: 300px;
+    background-color: #000000;
     border-right: 1px solid #ccc;
     overflow-y: scroll;
     padding-left: 20px;
     padding-right: 20px;
     box-sizing: border-box;
+}
+
+nav::-webkit-scrollbar {
+    width: 0;
+    height: 0;
 }
 
 nav #nav-search {
@@ -207,21 +221,28 @@ nav #nav-search {
     position: fixed;
     top: 0;
     left: 0;
-    height: 165px;
-    width: 305px;
-    background-color: #00B4EF;
-    vertical-align: middle;
+    height: 260px;
+    width: 300px;
+    background-color: #000000;
+    color: #FFFFFF;
     text-align: center;
     margin-top: 0px;    
 }
 
 .nav-header p {
-    padding-top: 15px;
+    padding-top: 8px;    
+}
+
+.nav-header a {
+    color: #FFFFFF;
+    font-size: .9rem;
+    line-height: 1.5;
 }
 
 nav h3 {
-    font-family: "Proxima Nova", sans-serif;
+    font-family: "Graphik Regular", sans-serif;
     font-size: 0.9rem;
+    color: #FFFFFF;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -233,8 +254,16 @@ nav ul {
     list-style: none;
 }
 
+nav h3 a {
+    color: #FFFFFF;
+}
+
 nav ul a, nav ul a:visited, nav ul a:active {
-    color: #a1a1a1;
+    color: #FFFFFF;
+}
+
+nav ul a:hover {
+    font-weight: bold;
 }
 
 nav ul ul {
@@ -250,7 +279,7 @@ nav ul ul li:first-child
 
 nav li 
 {
-    margin-top: 3px;
+    margin-top: 14px;
 }
  
 
@@ -333,14 +362,14 @@ nav > h2 > a {
 
 .search-input
 {
-    font-family: 'Proxima Nova', sans-serif;
-    font-size:  0.9rem;    
+    font-family: 'Graphik Regular', sans-serif;
+    font-size: 80%;    
     border: 1px solid #ddd;
     box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
-    border-radius: 0.1875rem;    
+    border-radius: 0;    
     color: #3A3F3E;
-    width: 75%;
-    padding: 0.425rem;
+    width: 70%;
+    padding: 10px;
 }
 
 /********************************************************************
@@ -349,30 +378,23 @@ nav > h2 > a {
 
 tt, code, kbd, samp {
     font-family: Consolas, Monaco, 'Andale Mono', monospace;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
 }
 
 .name, .signature {
   font-family: Consolas, Monaco, 'Andale Mono', monospace;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 }
-
-
-
-
-
-
-
 
 img {
+  display: block;
   max-width: 100%;
+  margin: auto;
 }
 
-p, ul, ol, blockquote {
+ul, ol, blockquote {
   margin-bottom: 1em;
 }
-
-
 
 .class-description {
   font-size: 130%;
@@ -394,7 +416,6 @@ header {
   display: block;
   padding: 0px 4px;
 }
-
 
 .apiLinks 
 {
@@ -427,7 +448,7 @@ header {
    color: #999 !important;
 }
 
-.availableIn 
+#main p.availableIn 
 {
     font-size: 0.8rem;
 }
@@ -501,7 +522,6 @@ header {
 
 .code-caption {
   font-style: italic;
-  font-size: 107%;
   margin: 0;
 }
 
@@ -517,7 +537,7 @@ header {
 
 .prettyprint code
 {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     line-height: 18px;
     display: block;
     padding: 4px 12px;
@@ -580,13 +600,8 @@ header {
    padding-top: 0;
 }
 
-.params td.description > p:last-child, .props td.description > p:last-child {
-   margin-bottom: 0;
-   padding-bottom: 0;
-}
-
 span.param-type, .params td .param-type, .param-type dd {
-   color: #606;
+  color: #606;
   font-family: Consolas, Monaco, 'Andale Mono', monospace
 }
 
@@ -671,51 +686,6 @@ span.param-type, .params td .param-type, .param-type dd {
   height: 100%;
   background: hsla(0, 0%, 0%, 0.5);
   z-index: 1;
-}
-
-/********************************************************************
-**************************** Mobile styles **************************
-*********************************************************************/
-
-@media only screen and (min-width: 320px) and (max-width: 680px) {
-  body {
-    overflow-x: hidden;
-  }
-
-  nav {
-    background: #FFF;
-    width: 250px;
-    height: 100%;
-    position: fixed;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: -250px;
-    z-index: 3;
-    padding: 0 10px;
-    transition: left 0.2s;
-  }
-
-  .navicon-button {
-    display: inline-block;
-    position: fixed;
-    top: 1.5em;
-    right: 0;
-    z-index: 2;
-  }
-
-  #main {
-    width: 100%;
-    min-width: 360px;
-  }
-
-  #main section {
-    padding: 0;
-  }
-
-  footer {
-    margin-left: 0;
-  }
 }
 
 /** Add a '#' to static members */

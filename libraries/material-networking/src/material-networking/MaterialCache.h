@@ -31,20 +31,26 @@ public:
     void setOcclusionMap(const QUrl& url);
     void setEmissiveMap(const QUrl& url);
     void setScatteringMap(const QUrl& url);
-    void setLightmapMap(const QUrl& url);
+    void setLightMap(const QUrl& url);
 
     bool isMissingTexture();
     void checkResetOpacityMap();
-
-protected:
-    friend class Geometry;
 
     class Texture {
     public:
         QString name;
         NetworkTexturePointer texture;
     };
-    using Textures = std::vector<Texture>;
+    struct MapChannelHash {
+        std::size_t operator()(MapChannel mapChannel) const {
+            return static_cast<std::size_t>(mapChannel);
+        }
+    };
+    using Textures = std::unordered_map<MapChannel, Texture, MapChannelHash>;
+    Textures getTextures() { return _textures; }
+
+protected:
+    friend class Geometry;
 
     Textures _textures;
 
@@ -102,11 +108,13 @@ private:
 
 using NetworkMaterialResourcePointer = QSharedPointer<NetworkMaterialResource>;
 using MaterialMapping = std::vector<std::pair<std::string, NetworkMaterialResourcePointer>>;
+Q_DECLARE_METATYPE(MaterialMapping)
 
-class MaterialCache : public ResourceCache {
+class MaterialCache : public ResourceCache, public Dependency {
+    Q_OBJECT
+    SINGLETON_DEPENDENCY
+
 public:
-    static MaterialCache& instance();
-
     NetworkMaterialResourcePointer getMaterial(const QUrl& url);
 
 protected:

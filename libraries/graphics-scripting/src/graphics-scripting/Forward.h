@@ -57,10 +57,10 @@ namespace scriptable {
      * @property {string} normalMap
      * @property {string} bumpMap
      * @property {string} occlusionMap
-     * @property {string} lightmapMap
+     * @property {string} lightMap
      * @property {string} scatteringMap
-     * @property {string} texCoordTransform0
-     * @property {string} texCoordTransform1
+     * @property {Mat4|string} texCoordTransform0
+     * @property {Mat4|string} texCoordTransform1
      * @property {string} lightmapParams
      * @property {string} materialParams
      * @property {boolean} defaultFallthrough
@@ -91,11 +91,14 @@ namespace scriptable {
         QString normalMap;
         QString bumpMap;
         QString occlusionMap;
-        QString lightmapMap;
+        QString lightMap;
         QString scatteringMap;
+        std::array<glm::mat4, graphics::Material::NUM_TEXCOORD_TRANSFORMS> texCoordTransforms;
 
         bool defaultFallthrough;
         std::unordered_map<uint, bool> propertyFallthroughs; // not actually exposed to script
+
+        graphics::MaterialKey key { 0 };
     };
 
     /**jsdoc
