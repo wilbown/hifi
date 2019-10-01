@@ -2125,12 +2125,3 @@ void Avatar::updateDescendantRenderIDs() {
         }
     });
 }
-
-QUuid Avatar::getMyAvatarID() const  {
-    auto nodeList = DependencyManager::get<NodeList>();
-    if (nodeList) {
-        return nodeList->getSessionUUID();
-    } else {
-        return QUuid();
-    }
-}

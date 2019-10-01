@@ -273,6 +273,7 @@ Rectangle {
                     }
                 }
 
+
                 HifiControlsUit.Switch {
                     id: audioLevelSwitch
                     height: root.switchHeight;
@@ -336,6 +337,7 @@ Rectangle {
             anchors.top: pttTextContainer.visible ? pttTextContainer.bottom : switchesContainer.bottom;
             anchors.topMargin: 10;
         }
+
 
         Item {
             id: inputDeviceHeader
