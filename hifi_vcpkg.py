@@ -267,7 +267,7 @@ endif()
             elif platform.system() == 'Darwin':
                 url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-macos3.tar.gz'
             elif platform.system() == 'Linux':
-                if platform.linux_distribution()[1][:3] == '16.':
+                if platform.linux_distribution()[1][:3] == '16.' or True:
                     url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-ubuntu-16.04-with-symbols.tar.gz'
                 elif platform.linux_distribution()[1][:3] == '18.':
                     url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-ubuntu-18.04.tar.gz'
