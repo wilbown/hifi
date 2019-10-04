@@ -14,22 +14,29 @@ function getRndInt(min, max) { return Math.floor(Math.random() * (max - min + 1)
 function getRndFloat(min, max) { return Math.random() * (max - min) + min; }
 
 // Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
-var POS_ZERO = { x: 0, y: 1, z: 0 };
-var DIST_MAX = 40;
-var DIST_NEAR = 5;
+var POS_ZERO = { x: 0, y: 1.0, z: 0 };
+var COLOR_ZERO = { red: 255, green: 255, blue: 255 };
+
+var DIST_MAX = 6
+var DIST_HEIGHT_MAX = 3
+var DIST_HEIGHT_MIN = 0.1
 
 var MOVE_X = { x: 0.01, y: 0, z: 0 };
-var MOVE_Y = { x: 0, y: 0.001, z: 0 };
+var MOVE_Y = { x: 0, y: 0.01, z: 0 };
 var MOVE_Z = { x: 0, y: 0, z: 0.01 };
 var MOVE_FAST_X = { x: 0.1, y: 0, z: 0 };
 var MOVE_FAST_Z = { x: 0, y: 0, z: 0.1 };
 
-var COLOR_ZERO = { red: 255, green: 255, blue: 0 };
-// var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
-// var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
-var COLOR_MAD = { red: 255, green: 0, blue: 0 };
-var COLOR_HAPPY = { red: 0, green: 255, blue: 0 };
-var COLOR_COOL = { red: 0, green: 0, blue: 255 };
+var AVATAR_DIST_MAX = 30;
+var AVATAR_DIST_NEAR = 5;
+
+var SCORE_WAIT = 10000;
+
+// // var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
+// // var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
+// var COLOR_MAD = { red: 255, green: 0, blue: 0 };
+// var COLOR_HAPPY = { red: 0, green: 255, blue: 0 };
+// var COLOR_COOL = { red: 0, green: 0, blue: 255 };
 
 // Setup EntityViewer
 EntityViewer.setPosition(POS_ZERO);
@@ -107,7 +114,7 @@ var environment = { // observation = object, info = dictionary
     observation: [],
     reward: 0.0,
     done: false,
-    info: {error: null},
+    info: {scoring: false, error: null},
 }
 
 var entityID = "{f3273714-5e19-4ceb-8ff1-67981dcc3890}";
@@ -123,22 +130,31 @@ function update(deltaTime) {
     var obs = [];
     var obsi = 0;
 
+    var scoring = this.environment.info.scoring;
+    // var scoring = (Date.now() < this.environment.info.scoring);
+    // if (!scoring && this.environment.info.scoring > 0) {
+    //     this.environment.info.scoring = 0;
+    //     this.environment.done = true;
+    // }
+    // print("GymAC.update: scoring " + this.environment.info.scoring);
+
     // Add entity position
     var edist = Vec3.distance(entity.position, POS_ZERO);
     var erads = Vec3.getAngle(entity.position, POS_ZERO);
     var epose = getPose(edist, erads);
     epose.forEach(function(e){ obs[obsi++] = e; });
+    // print("GymAC.update: epose " + epose);
 
-    // Out of bounds, reset
-    if (edist > DIST_MAX/2) {
+    // Out of bounds
+    if (edist > DIST_MAX || entity.position.y > DIST_HEIGHT_MAX || entity.position.y < DIST_HEIGHT_MIN) {
         // print("GymAC.update: OUT OF BOUNDS " + edist);
-        rwd -= 6.0;
-        this.environment.done = true;
-        Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+        rwd -= edist * 2;
+        // this.environment.done = true;
+        // Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
     }
 
     // See local avatars
-    var avatarIDs = AvatarList.getAvatarsInRange(entity.position, DIST_MAX);
+    var avatarIDs = AvatarList.getAvatarsInRange(entity.position, AVATAR_DIST_MAX);
     for (i = 0; i < avatarIDs.length; i++) {
         var avtr = AvatarList.getAvatar(avatarIDs[i]);
         if (Object.keys(avtr).length === 0) continue; // avatar doesn't exist?
@@ -146,16 +162,16 @@ function update(deltaTime) {
         var dist = Vec3.distance(entity.position, avtr.position);
         var rads = Vec3.getAngle(entity.position, avtr.position);
 
-        if (dist > DIST_MAX) continue;
-        if (dist < 0.1) {
-            rwd -= 6.0;
-            this.environment.done = true;
-            Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+        if (dist > AVATAR_DIST_MAX) continue;
+        if (dist < 0.2) {
+            rwd += (scoring)?10.0:-5.0;
+            // this.environment.done = true;
+            // Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
         }
-        else if (dist < 0.5) rwd -= 1.0;
-        else if (dist < 1.5) rwd += 0.2;
-        else if (dist < 5) rwd += 0.03;
-        else if (dist < 10) rwd += 0.01;
+        else if (dist < 0.5) rwd += (scoring)?1.0:-0.5;
+        else if (dist < 1.5) rwd += (scoring)?0.0:0.2;
+        else if (dist < 5) rwd += (scoring)?0.0:0.03;
+        else if (dist < 10) rwd += (scoring)?0.0:0.01;
 
         var pose = getPose(dist, rads);
         pose.forEach(function(e){ obs[obsi++] = e; });
@@ -168,10 +184,11 @@ function update(deltaTime) {
 }
 
 function getPose(dist, rads) {
-    if (dist < 0.0) dist = 0.0;
-    var near = (dist > DIST_NEAR) ? 255 : dist/DIST_NEAR*255;
-    var far = dist/DIST_MAX*255;
+    if (isNaN(dist) || dist < 0.0) dist = 0.0;
+    var near = (dist > AVATAR_DIST_NEAR) ? 255 : dist/AVATAR_DIST_NEAR*255;
+    var far = dist/AVATAR_DIST_MAX*255;
     // print("GymAC.update rads: " + rads);
+    if (isNaN(rads)) rads = 0.0;
     var angle = rads/Math.PI*255;
     if (angle > 255) angle = 255;
     var pose = [];
@@ -208,38 +225,116 @@ function handleGymMessage(_message) {
 
     var entity = Entities.getEntityProperties(this.entityID);
     if (Object.keys(entity).length !== 0) { // entity does not exist
+
+        // var scoring = (Date.now() < this.environment.info.scoring);
+
         if (action == "reset") {
             // Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
-        } else if (action == 0) {
-            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_X) });
-        } else if (action == 1) {
-            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Y) });
-        } else if (action == 2) {
-            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Z) });
-        } else if (action == 3) {
-            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_X) });
-        } else if (action == 4) {
-            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Y) });
-        } else if (action == 5) {
-            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Z) });
-        } else if (action == 6) {
-            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_X) });
-        } else if (action == 7) {
-            Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_Z) });
-        } else if (action == 8) {
-            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_X) });
-        } else if (action == 9) {
-            Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_Z) });
-        } else if (action == 15) {
-            Entities.editEntity(this.entityID, { color: COLOR_MAD });
-        } else if (action == 16) {
-            Entities.editEntity(this.entityID, { color: COLOR_HAPPY });
-        } else if (action == 17) {
-            Entities.editEntity(this.entityID, { color: COLOR_COOL });
-        } else {
-            // Entities.editEntity(this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
-            // Entities.editEntity(this.entityID, { color: { red: 10 * action, green: 10 * action, blue: 10 * action} });
         }
+
+
+        if (this.environment.info.scoring) {
+            // if (Vec3.length(entity.position) > 1.2) Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
+        } else {
+            if (action == 0) {
+                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Y) });
+            } else if (action == 1) {
+                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_X) });
+            } else if (action == 2) {
+                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Z) });
+            } else if (action == 3) {
+                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Y) });
+            } else if (action == 4) {
+                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_X) });
+            } else if (action == 5) {
+                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Z) });
+    
+            } else if (action == 6) {
+                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_X) });
+            } else if (action == 7) {
+                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_Z) });
+            } else if (action == 8) {
+                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_X) });
+            } else if (action == 9) {
+                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_Z) });
+
+            // } else if (action == 18) {
+            //     // create object
+            // } else if (action == 17) {
+            //     // delete object
+            // } else if (action == 17) {
+            //     // pickup object
+            // } else if (action == 17) {
+            //     // drop object
+    
+            // } else if (action == 17) {
+            //     // pick sphere
+            // } else if (action == 17) {
+            //     // pick cube
+            // } else if (action == 17) {
+            //     // pick cylinder
+    
+            // } else if (action == 17) {
+            //     // cycle shape width
+            // } else if (action == 17) {
+            //     // cycle shape height
+            // } else if (action == 17) {
+            //     // cycle shape scale
+    
+            // } else if (action == 17) {
+            //     // cycle shape color red
+            // } else if (action == 17) {
+            //     // cycle shape color green
+            // } else if (action == 17) {
+            //     // cycle shape color blue
+    
+            }
+
+        }
+
+        if (action == 28) {
+            Entities.editEntity(this.entityID, { color: { red: (entity.color.red==255)?0:255, green: entity.color.green, blue: entity.color.blue }});
+        } else if (action == 29) {
+            Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: (entity.color.green==255)?0:255, blue: entity.color.blue }});
+        } else if (action == 30) {
+            Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: (entity.color.blue==255)?0:255 }});
+    
+        } else if (action == 31) {
+            // wait for score
+            // this.environment.info.scoring = Date.now() + SCORE_WAIT;
+            this.environment.info.scoring = !this.environment.info.scoring;
+            if (!this.environment.info.scoring) this.environment.done = true;
+            else Entities.editEntity(this.entityID, { position: POS_ZERO });
+        }
+    
+
+
+        // } else if (action == 10) {
+        //     newcolor = (entity.color.red >= 251) ? 255 : entity.color.red + 4;
+        //     Entities.editEntity(this.entityID, { color: { red: newcolor, green: entity.color.green, blue: entity.color.blue }});
+        // } else if (action == 11) {
+        //     newcolor = (entity.color.green >= 251) ? 255 : entity.color.green + 4;
+        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: newcolor, blue: entity.color.blue }});
+        // } else if (action == 12) {
+        //     newcolor = (entity.color.blue >= 251) ? 255 : entity.color.blue + 4;
+        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: newcolor }});
+
+        // } else if (action == 13) {
+        //     newcolor = (entity.color.red <= 4) ? 0 : entity.color.red - 4;
+        //     Entities.editEntity(this.entityID, { color: { red: newcolor, green: entity.color.green, blue: entity.color.blue }});
+        // } else if (action == 14) {
+        //     newcolor = (entity.color.green <= 4) ? 0 : entity.color.green - 4;
+        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: newcolor, blue: entity.color.blue }});
+        // } else if (action == 15) {
+        //     newcolor = (entity.color.blue <= 4) ? 0 : entity.color.blue - 4;
+        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: newcolor }});
+
+        // else {
+        //     // Entities.editEntity(this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
+        //     // Entities.editEntity(this.entityID, { color: { red: 10 * action, green: 10 * action, blue: 10 * action} });
+        // }
+
+
     }
 
     // Return environment
