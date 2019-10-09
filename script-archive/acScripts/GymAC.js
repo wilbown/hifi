@@ -13,13 +13,22 @@
 function getRndInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function getRndFloat(min, max) { return Math.random() * (max - min) + min; }
 
-// Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
-var POS_ZERO = { x: 0, y: 1.0, z: 0 };
-var COLOR_ZERO = { red: 255, green: 255, blue: 255 };
+var agent = 5558;
+var obs_size = 4*4*3; //max observation size
 
-var DIST_MAX = 6
+var actorID = "{177dfde6-8dbd-4f3e-8efd-88684b1c54b8}";
+var platformID = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
+var platformArtID = "{bbd37eca-9650-4b8d-a063-fac2d3150ebb}";
+var platformPeople = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
+
+// Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
+
+var ROT_PLATFORM = 1.0;
+var ROT_PLATFORM_ART = Quat.fromPitchYawRollDegrees(0, 40, 0);
+
+var DIST_MAX = 3
 var DIST_HEIGHT_MAX = 3
-var DIST_HEIGHT_MIN = 0.1
+var DIST_HEIGHT_MIN = 0.05
 
 var MOVE_X = { x: 0.01, y: 0, z: 0 };
 var MOVE_Y = { x: 0, y: 0.01, z: 0 };
@@ -27,104 +36,221 @@ var MOVE_Z = { x: 0, y: 0, z: 0.01 };
 var MOVE_FAST_X = { x: 0.1, y: 0, z: 0 };
 var MOVE_FAST_Z = { x: 0, y: 0, z: 0.1 };
 
+var ROT_Xl = Quat.fromPitchYawRollDegrees(15, 0, 0);
+var ROT_XR = Quat.fromPitchYawRollDegrees(-15, 0, 0);
+var ROT_Yl = Quat.fromPitchYawRollDegrees(0, 15, 0);
+var ROT_YR = Quat.fromPitchYawRollDegrees(0, -15, 0);
+var ROT_Zl = Quat.fromPitchYawRollDegrees(0, 0, 15);
+var ROT_ZR = Quat.fromPitchYawRollDegrees(0, 0, -15);
+
 var AVATAR_DIST_MAX = 30;
 var AVATAR_DIST_NEAR = 5;
 
-var SCORE_WAIT = 10000;
+// var SCORE_WAIT = 10000;
 
 // // var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
 // // var COLOR_YELLOW = { red: 255, green: 255, blue: 0 };
 // var COLOR_MAD = { red: 255, green: 0, blue: 0 };
 // var COLOR_HAPPY = { red: 0, green: 255, blue: 0 };
 // var COLOR_COOL = { red: 0, green: 0, blue: 255 };
+var COLOR_PINK = { red: 255, green: 192, blue: 203 };
+
+// var SHAPES = ["Circle","Cone","Cube","Cylinder","Dodecahedron","Hexagon","Icosahedron","Octagon","Octahedron","Quad","Sphere","Tetrahedron","Triangle"];
+var SHAPES = ["Cube","Cylinder","Cone","Sphere","Dodecahedron","Octahedron","Tetrahedron"];
+
+var POS_ZERO = { x: 0, y: 1.0, z: 0 };
+var COLOR_ZERO = { red: 127, green: 127, blue: 127 };
+var SHAPE_ZERO = "Sphere";
+
 
 // Setup EntityViewer
 EntityViewer.setPosition(POS_ZERO);
 // EntityViewer.setOrientation(Quat.fromPitchYawRollDegrees(0, -90, 0));
 EntityViewer.setCenterRadius(1000);
 
+
+
+
 // var timePassed = 0.0;
 // var updateSpeed = 5.0; // seconds
+// var oneoff = true;
+// var tick = 0;
 // function update(deltaTime) {
 //     timePassed += deltaTime;
 //     if (timePassed > updateSpeed) {
 //         timePassed = 0.0;
+//         if (!Entities.serversExist() || !Entities.canRez()) return;
 //         EntityViewer.queryOctree();
 //         // print("GymAC.update NEW");
 //         // print("GymAC.update path: " + Script.resolvePath("/")); // "file://"
 //         // print("GymAC.update path: " + Script.resolvePath("")); // file:///home/wilbown/GitHub/hifi/script-archive/acScripts/GymAC.js
 
+//         // print("GymAC.update Avatar.position: " + JSON.stringify(Avatar.position)); //{"x":0,"y":0,"z":0}
+//         // print("GymAC.update Avatar.sessionUUID: " + JSON.stringify(Avatar.sessionUUID)); //"{ab017ab6-f53c-4af4-b3ff-6118ae98181f}"
 
-//         // var position = Avatar.position;
-//         // print("GymAC.update Avatar.position: " + JSON.stringify(position)); //{"x":0,"y":0,"z":0}
+//         var props = Entities.getEntityProperties(this.actorID);
+//         // print("GymAC.update Entities.props: " + JSON.stringify(props));
 
-//         // var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}"); // gymSphere id
+
+
+//         var parentID = Entities.addEntity({
+//             // visible: false,
+//             name: "DerpArt"+tick,
+//             type: "Shape",
+//             shape: "Cylinder",
+//             position: { x: 0.0, y: 0.0, z: 0.0 },
+//             dimensions: { x: 5.0, y: 0.1, z: 5.0 },
+//             color: { red: 0, green: 255, blue: 0 },
+//             alpha: 1.0,
+//             lifetime: 45
+//         });
+//         // var parent = Entities.getEntityProperties(parentID);
+//         // print("Entity created: " + JSON.stringify(parent));
+
+//         var entityID = Entities.addEntity({
+//             parentID: parentID,
+//             type: "Shape",
+//             shape: "Cube", // "Circle" "Cone" "Cube" "Cylinder" "Dodecahedron" "Hexagon" "Icosahedron" "Octagon" "Octahedron" "Quad" "Sphere" "Tetrahedron" "Triangle"
+//             localPosition: Vec3.sum(props.position, Vec3.multiplyQbyV(props.rotation, { x: 0.1*tick, y: 0, z: -0.1*tick })),
+//             localRotation: props.rotation,
+//             dimensions: { x: 0.2, y: 0.2, z: 0.2 },
+//             color: { red: 0, green: 0, blue: 255 },
+//             alpha: 1.0,
+//             lifetime: 45
+//         });
+//         // var entity = Entities.getEntityProperties(entityID);
+//         // print("Entity created: " + JSON.stringify(entity));
+
+//         var q = Quat.fromPitchYawRollDegrees(0, 40, 0);
+//         for (t = 0; t < tick; t++) {
+//             var entityIDs = Entities.findEntitiesByName("DerpArt"+t, POS_ZERO, 100, false);
+//             // print("Entity found: " + entityIDs.length);
+//             for (i = 0; i < entityIDs.length; i++) {
+//                 var entity = Entities.getEntityProperties(entityIDs[i]);
+//                 newpos = Vec3.sum(entity.position, { x: 0, y: 1.0, z: 0 });
+//                 if (t == tick - 1) newpos = Vec3.sum(newpos, { x: 0, y: 0, z: 8.0 });
+//                 newpos = Vec3.multiplyQbyV(q, newpos);
+//                 Entities.editEntity(entityIDs[i], { position: newpos });
+//             }
+//         }
+
+
+//         // var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
 //         // print("GymAC.update Entities.position: " + JSON.stringify(props));
 
 //         // var entityIDs = Entities.findEntities(position, 1000);
 //         // var entityIDs = Entities.findEntities(0, 1000);
-//         // var entityIDs = Entities.findEntities([0, 0, 0], 10);
+//         // var entityIDs = Entities.findEntities([0, 0, 0], 1000);
 //         // var entityIDs = Entities.findEntitiesByType("Shape", position, 1000);
+//         // var entityIDs = Entities.findEntitiesByName("Light-Target", position, 10, false);
 
 //         // var entityIDs = AvatarList.getAvatarsInRange([0, 0, 0], 10); //works
-//         // // var entityIDs = AvatarList.getAvatarIdentifiers(); //works, gets all on server
-//         // // print("GymAC.update Entities.num entities: " + entityIDs.length);
-//         // for (var key in entityIDs) {
-//         //     var type = entityIDs[key];
-//         //     // var type = Entities.getEntityProperties(entityIDs[key]).position;
-//         //     // var type = AvatarList.getAvatar(entityIDs[key]);
-//         //     print("GymAC.update Entities.num entities.type: " + JSON.stringify(type));
+//         // var entityIDs = AvatarList.getAvatarIdentifiers(); //works, gets all on server
+//         // print("GymAC.update Entities.num entities: " + entityIDs.length);
+//         // var count = 0;
+//         // for (i = 0; i < entityIDs.length; i++) {
+//         //     var id = entityIDs[i];
+//         //     var entity = Entities.getEntityProperties(entityIDs[i]);
+//         //     // var avtr = AvatarList.getAvatar(entityIDs[i]);
+//         //     if (Object.keys(entity).length === 0) continue;
+//         //     if (!entity.locked && entityIDs[i]!=this.actorID) {
+//         //         count++;
+//         //         // Entities.deleteEntity(entityIDs[i]);
+//         //         // print("GymAC.update deleted:" + id);
+//         //         break;
+//         //     }
+//         //     // print("GymAC.update Entities: " + JSON.stringify(entity.location));
 //         // }
+//         // print("GymAC.update Entities: " + count);
 
-//         // var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
+//         // var props = Entities.getEntityProperties(this.actorID);
 //         // if (Object.keys(props).length !== 0) {
 //         //     // print("GymAC.update Entities.position: " + JSON.stringify(props));
-//         //     // Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { color: { red: getRndInt(0,255), green: getRndInt(0,255), blue: getRndInt(0,255)} });
-//         //     // Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData: "testing" });
-//         //     // Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData: JSON.stringify({ observation: [getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), -0.35], reward: 0.03, done: false, info: {error: null}}) });
-//         //     Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData: JSON.stringify({ observation: [getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), -0.35], reward: 0.03}) });
+//         //     // Entities.editEntity(this.actorID, { color: { red: getRndInt(0,255), green: getRndInt(0,255), blue: getRndInt(0,255)} });
+//         //     // Entities.editEntity(this.actorID, { userData: "testing" });
+//         //     // Entities.editEntity(this.actorID, { userData: JSON.stringify({ observation: [getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), -0.35], reward: 0.03, done: false, info: {error: null}}) });
+//         //     Entities.editEntity(this.actorID, { userData: JSON.stringify({ observation: [getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), getRndFloat(-1.0,1.0), -0.35], reward: 0.03}) });
 //         // }
 
-//         var props = Entities.getEntityProperties("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}");
-//         if (Object.keys(props).length !== 0) {
-//             var rwd = 0.0;
-//             var obs = [1.0, 1.0, 1.0, 1.0];
-//             var obsi = 0;
-//             var entityIDs = AvatarList.getAvatarsInRange(props.position, 10); //works
-//             for (i = 0; i < entityIDs.length; i++) {
-//                 var avtr = AvatarList.getAvatar(entityIDs[i]);
-//                 if (Object.keys(avtr).length !== 0) {
-//                     var dist = Vec3.distance(props.position, avtr.position);
-//                     if (dist > 10) continue;
-//                     if (dist < 0.5) rwd += 1.0;
-//                     if (dist < 0.0) dist = 0.0;
-//                     obs[obsi] = dist / 5.0 - 1.0; obsi++;
-//                 }
-//             }
-//             Entities.editEntity("{ddc4fba8-6e36-42d7-af5a-3cf9b39fdcff}", { userData: JSON.stringify({ observation: obs, reward: rwd}) });
+//         // var props = Entities.getEntityProperties(this.actorID);
+//         // if (Object.keys(props).length !== 0) {
+//         //     var rwd = 0.0;
+//         //     var obs = [1.0, 1.0, 1.0, 1.0];
+//         //     var obsi = 0;
+//         //     var entityIDs = AvatarList.getAvatarsInRange(props.position, 10); //works
+//         //     for (i = 0; i < entityIDs.length; i++) {
+//         //         var avtr = AvatarList.getAvatar(entityIDs[i]);
+//         //         if (Object.keys(avtr).length !== 0) {
+//         //             var dist = Vec3.distance(props.position, avtr.position);
+//         //             if (dist > 10) continue;
+//         //             if (dist < 0.5) rwd += 1.0;
+//         //             if (dist < 0.0) dist = 0.0;
+//         //             obs[obsi] = dist / 5.0 - 1.0; obsi++;
+//         //         }
+//         //     }
+//         //     Entities.editEntity(this.actorID, { userData: JSON.stringify({ observation: obs, reward: rwd}) });
+//         // }
+
+//         if (oneoff) {
+//             oneoff = false;
+
+//             // var entityID = Entities.addEntity({
+//             //     // visible: false,
+//             //     name: "DerpArt1",
+//             //     type: "Sphere",
+//             //     position: POS_ZERO,
+//             //     dimensions: { x: 1.0, y: 1.0, z: 1.0 },
+//             //     color: { red: 0, green: 255, blue: 0 },
+//             //     alpha: 1.0,
+//             //     lifetime: 45
+//             // });
+//             // var entity = Entities.getEntityProperties(entityID);
+//             // print("Entity created: " + JSON.stringify(entity));
+
+
 //         }
 
+//         tick++;
 //     }
 // }
 
 
-var agent = 5558;
+
+
 
 var environment = { // observation = object, info = dictionary
     observation: [],
     reward: 0.0,
     done: false,
-    info: {scoring: false, error: null},
+    info: {scoringwait: 0, scoring: false, saveart: false, paintparent:false, artcreated: 0, error: null},
 }
-
-var entityID = "{f3273714-5e19-4ceb-8ff1-67981dcc3890}";
+var oneshot = true;
+var totalTime = 0.0;
 
 function update(deltaTime) {
     if (!Entities.serversExist() || !Entities.canRez()) return;
     EntityViewer.queryOctree();
 
-    var entity = Entities.getEntityProperties(this.entityID);
-    if (Object.keys(entity).length === 0) return; // entity does not exist yet
+    if (this.oneshot) {
+        this.oneshot = false;
+
+        // var entityIDs = Entities.findEntitiesByName("DerpQ", POS_ZERO, 1000, true);
+        // if (entityIDs.length > 0) {
+        //     print("GymAC.update Entities found: " + entityIDs);
+        //     var props = Entities.getEntityProperties(entityIDs[0]);
+        //     print("GymAC.update Entities.props: " + JSON.stringify(props));
+        // }
+        // else this.oneshot = true;
+    }
+
+    // animations
+    // var platform = Entities.getEntityProperties(platformID);
+    // Entities.editEntity(platformID, { rotation: Quat.multiply(Quat.fromPitchYawRollDegrees(0, ROT_PLATFORM * deltaTime, 0), platform.rotation) });
+
+
+    // get environment and rewards
+    var actor = Entities.getEntityProperties(this.actorID);
+    if (Object.keys(actor).length === 0) return; // actor does not exist yet
 
     var rwd = 0.0;
     var obs = [];
@@ -138,47 +264,73 @@ function update(deltaTime) {
     // }
     // print("GymAC.update: scoring " + this.environment.info.scoring);
 
-    // Add entity position
-    var edist = Vec3.distance(entity.position, POS_ZERO);
-    var erads = Vec3.getAngle(entity.position, POS_ZERO);
+    // Add actor position
+    var edist = Vec3.distance(actor.position, POS_ZERO);
+    var erads = Vec3.getAngle(actor.position, POS_ZERO);
     var epose = getPose(edist, erads);
     epose.forEach(function(e){ obs[obsi++] = e; });
     // print("GymAC.update: epose " + epose);
 
     // Out of bounds
-    if (edist > DIST_MAX || entity.position.y > DIST_HEIGHT_MAX || entity.position.y < DIST_HEIGHT_MIN) {
+    if (edist > DIST_MAX || actor.position.y > DIST_HEIGHT_MAX || actor.position.y < DIST_HEIGHT_MIN) {
         // print("GymAC.update: OUT OF BOUNDS " + edist);
-        rwd -= edist * 2;
+        rwd += edist * ((scoring)?-3.0:-1.0);
         // this.environment.done = true;
-        // Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
+        // Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, Vec3.normalize(actor.position)) });
     }
 
     // See local avatars
-    var avatarIDs = AvatarList.getAvatarsInRange(entity.position, AVATAR_DIST_MAX);
+    var avatarIDs = AvatarList.getAvatarsInRange(actor.position, AVATAR_DIST_MAX);
+    // print("GymAC.update AvatarList.find length: " + avatarIDs.length);
     for (i = 0; i < avatarIDs.length; i++) {
         var avtr = AvatarList.getAvatar(avatarIDs[i]);
         if (Object.keys(avtr).length === 0) continue; // avatar doesn't exist?
 
-        var dist = Vec3.distance(entity.position, avtr.position);
-        var rads = Vec3.getAngle(entity.position, avtr.position);
-
+        var dist = Vec3.distance(actor.position, avtr.position);
         if (dist > AVATAR_DIST_MAX) continue;
+        var rads = Vec3.getAngle(actor.position, avtr.position);
+
         if (dist < 0.2) {
-            rwd += (scoring)?10.0:-5.0;
+            rwd += (scoring)?20.0:-5.0;
             // this.environment.done = true;
-            // Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
+            // Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, Vec3.normalize(actor.position)) });
         }
-        else if (dist < 0.5) rwd += (scoring)?1.0:-0.5;
+        else if (dist < 0.5) rwd += (scoring)?4.0:-0.5;
         else if (dist < 1.5) rwd += (scoring)?0.0:0.2;
         else if (dist < 5) rwd += (scoring)?0.0:0.03;
         else if (dist < 10) rwd += (scoring)?0.0:0.01;
 
         var pose = getPose(dist, rads);
         pose.forEach(function(e){ obs[obsi++] = e; });
-        if (obsi > 4*4*3) break; //max observation size
+        if (obsi > obs_size) break;
     }
-    
-    // Entities.editEntity(this.entityID, { userData:JSON.stringify({ reward:rwd, observation:obs }) });
+
+    if (obsi < obs_size - 3) {
+        // See local entities
+        var entityIDs = Entities.findEntitiesByType("Shape", actor.position, AVATAR_DIST_MAX);
+        for (i = 0; i < entityIDs.length; i++) {
+            var entity = Entities.getEntityProperties(entityIDs[i]);
+            if (Object.keys(entity).length === 0) continue; // entity doesn't exist?
+            if (entity.locked || entityIDs[i]==this.actorID) continue;
+
+            var dist = Vec3.distance(actor.position, entity.position);
+            if (dist > AVATAR_DIST_MAX) continue;
+            var rads = Vec3.getAngle(actor.position, entity.position);
+            // print("GymAC.update Entities added to obs: " + dist);
+
+            if (dist < DIST_MAX*2) rwd += 0.001;
+
+            var dist_center = Vec3.distance(POS_ZERO, entity.position);
+            if (dist_center < DIST_MAX) rwd += (scoring)?0.03:0.01;
+
+            var pose = getPose(dist, rads);
+            pose.forEach(function(e){ obs[obsi++] = e; });
+            if (obsi > obs_size) break; //max observation size
+        }
+    }
+
+    // Entities.editEntity(this.actorID, { userData:JSON.stringify({ reward:rwd, observation:obs }) });
+    if (rwd > 4.0) this.environment.info.saveart = true;
     this.environment.reward = rwd;
     this.environment.observation = obs;
 }
@@ -223,115 +375,198 @@ function handleGymMessage(_message) {
     var action = _message.message.action[0];
     // print("GymAC.handleGymMessage: action: "+JSON.stringify(action));
 
-    var entity = Entities.getEntityProperties(this.entityID);
-    if (Object.keys(entity).length !== 0) { // entity does not exist
+    var actor = Entities.getEntityProperties(this.actorID);
+    if (Object.keys(actor).length !== 0) { // actor does not exist
 
         // var scoring = (Date.now() < this.environment.info.scoring);
 
         if (action == "reset") {
-            // Entities.editEntity(this.entityID, { color: COLOR_ZERO, position: POS_ZERO });
+            // print("GymAC.handleGymMessage: RESET!");
+            // SHAPES[Math.floor(Math.random()*SHAPES.length)]
+            // Entities.editEntity(this.actorID, { shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, color: COLOR_ZERO, alpha: 1.0 });
+            // Entities.editEntity(this.actorID, { visible: true });
+            if (this.environment.info.paintparent)
+                Entities.editEntity(this.actorID, { position: POS_ZERO, shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, alpha: 1.0 });
+            else
+                Entities.editEntity(this.actorID, { position: POS_ZERO, shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, alpha: 1.0 });
+
+            // print("GymAC.handleGymMessage: saveart: "+this.environment.info.saveart);
+            if (this.environment.info.paintparent && Entities.isAddedEntity(this.environment.info.paintparent)) {
+                if (this.environment.info.saveart) {
+                    this.environment.info.saveart = false;
+                    // move all old up
+                    for (t = 0; t < this.environment.info.artcreated; t++) {
+                        var platformIDs = Entities.findEntitiesByName("DerpArt"+t, POS_ZERO, 1000, false);
+                        for (i = 0; i < platformIDs.length; i++) {
+                            var platform = Entities.getEntityProperties(platformIDs[i], ["position"]);
+                            var newpos = Vec3.sum(platform.position, { x: 0, y: 1.0, z: 0 });
+                            newpos = Vec3.multiplyQbyV(ROT_PLATFORM_ART, newpos);
+                            Entities.editEntity(platformIDs[i], { position: newpos });
+                        }
+                    }
+                    // move
+                    Entities.editEntity(this.environment.info.paintparent, { position: { x: 0, y: -0.4, z: 8.0 } });
+
+                    this.environment.info.artcreated += 1;
+                    // print("GymAC.handleGymMessage: SAVE! " + this.environment.info.paintparent);
+                } else {
+                    Entities.deleteEntity(this.environment.info.paintparent);
+                    // print("GymAC.handleGymMessage: DELETE! " + this.environment.info.paintparent);
+                }
+            }
+            // this.environment.info.paintparent = Entities.addEntity({
+            //     // visible: false,
+            //     name: "DerpArt"+this.environment.info.artcreated,
+            //     type: "Shape",
+            //     shape: "Cylinder",
+            //     position: { x: 0.0, y: 0.0, z: 0.0 },
+            //     dimensions: { x: 5.0, y: 0.1, z: 5.0 },
+            //     color: { red: 0, green: 128, blue: 255 },
+            //     alpha: 0.5,
+            //     lifetime: 120,
+            // });
+            this.environment.info.paintparent = Entities.addEntity({
+                // visible: false,
+                name: "DerpArt"+this.environment.info.artcreated,
+                type: "Model",
+                modelURL: "https://xaotica.s3-us-west-1.amazonaws.com/ArtQ/Entities/SmallCircle.fbx",
+                position: { x: 0.0, y: 0.0, z: 0.0 },
+                dimensions: { x: 5, y: 0.18750138580799103, z: 5 },
+                grab: { grabbable: false },
+                // lifetime: 180,
+            });
+            // print("GymAC.handleGymMessage: CREATED! DerpArt"+this.environment.info.artcreated + " " + this.environment.info.paintparent);
+
         }
 
 
-        if (this.environment.info.scoring) {
-            // if (Vec3.length(entity.position) > 1.2) Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, Vec3.normalize(entity.position)) });
-        } else {
+        if (!this.environment.info.scoring) {
+            
             if (action == 0) {
-                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Y) });
+                Entities.editEntity(this.actorID, { position: Vec3.sum(actor.position, MOVE_Y) });
             } else if (action == 1) {
-                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_X) });
+                Entities.editEntity(this.actorID, { position: Vec3.sum(actor.position, MOVE_X) });
             } else if (action == 2) {
-                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_Z) });
+                Entities.editEntity(this.actorID, { position: Vec3.sum(actor.position, MOVE_Z) });
             } else if (action == 3) {
-                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Y) });
+                Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, MOVE_Y) });
             } else if (action == 4) {
-                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_X) });
+                Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, MOVE_X) });
             } else if (action == 5) {
-                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_Z) });
+                Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, MOVE_Z) });
     
             } else if (action == 6) {
-                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_X) });
+                Entities.editEntity(this.actorID, { position: Vec3.sum(actor.position, MOVE_FAST_X) });
             } else if (action == 7) {
-                Entities.editEntity(this.entityID, { position: Vec3.sum(entity.position, MOVE_FAST_Z) });
+                Entities.editEntity(this.actorID, { position: Vec3.sum(actor.position, MOVE_FAST_Z) });
             } else if (action == 8) {
-                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_X) });
+                Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, MOVE_FAST_X) });
             } else if (action == 9) {
-                Entities.editEntity(this.entityID, { position: Vec3.subtract(entity.position, MOVE_FAST_Z) });
+                Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, MOVE_FAST_Z) });
+                
+            } else if (action == 10) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_Xl, actor.rotation) });
+            } else if (action == 11) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_XR, actor.rotation) });
+            } else if (action == 12) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_Yl, actor.rotation) });
+            } else if (action == 13) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_YR, actor.rotation) });
+            } else if (action == 14) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_Zl, actor.rotation) });
+            } else if (action == 15) {
+                Entities.editEntity(this.actorID, { rotation: Quat.multiply(ROT_ZR, actor.rotation) });
+            
+            } else if (this.environment.info.paintparent && Entities.isAddedEntity(this.environment.info.paintparent)) {
 
-            // } else if (action == 18) {
-            //     // create object
-            // } else if (action == 17) {
-            //     // delete object
-            // } else if (action == 17) {
-            //     // pickup object
-            // } else if (action == 17) {
-            //     // drop object
-    
-            // } else if (action == 17) {
-            //     // pick sphere
-            // } else if (action == 17) {
-            //     // pick cube
-            // } else if (action == 17) {
-            //     // pick cylinder
-    
-            // } else if (action == 17) {
-            //     // cycle shape width
-            // } else if (action == 17) {
-            //     // cycle shape height
-            // } else if (action == 17) {
-            //     // cycle shape scale
-    
-            // } else if (action == 17) {
-            //     // cycle shape color red
-            // } else if (action == 17) {
-            //     // cycle shape color green
-            // } else if (action == 17) {
-            //     // cycle shape color blue
+                if (action == 16) {
+                    // create object
+                    Entities.addEntity({
+                        parentID: this.environment.info.paintparent,
+                        type: "Shape",
+                        shape: actor.shape,
+                        // localPosition: Vec3.sum(actor.position, Vec3.multiplyQbyV(actor.rotation, { x: 0, y: 0, z: 0 })),
+                        // localPosition: actor.position,
+                        // localRotation: actor.rotation,
+                        position: actor.position,
+                        rotation: actor.rotation,
+                        dimensions: { x: 0.25, y: 0.25, z: 0.25 },
+                        color: actor.color,
+                        alpha: 1.0,
+                    });
+                // } else if (action == 17) {
+                //     // delete object
+                // } else if (action == 17) {
+                //     // pickup object
+                // } else if (action == 17) {
+                //     // drop object
+
+                } else if (action == 23) {
+                    var i = SHAPES.indexOf(actor.shape);
+                    if (i >= 0 && i < SHAPES.length-1) Entities.editEntity(this.actorID, { shape: SHAPES[i+1] });
+                } else if (action == 24) {
+                    var i = SHAPES.indexOf(actor.shape);
+                    if (i >= 1) Entities.editEntity(this.actorID, { shape: SHAPES[i-1] });
+
+                } else if (action == 25) {
+                    var newcolor = (actor.color.red >= 247) ? 255 : actor.color.red + 8;
+                    Entities.editEntity(this.actorID, { color: { red: newcolor, green: actor.color.green, blue: actor.color.blue }});
+                } else if (action == 26) {
+                    var newcolor = (actor.color.green >= 247) ? 255 : actor.color.green + 8;
+                    Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: newcolor, blue: actor.color.blue }});
+                } else if (action == 27) {
+                    var newcolor = (actor.color.blue >= 247) ? 255 : actor.color.blue + 8;
+                    Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: actor.color.green, blue: newcolor }});
+
+                } else if (action == 28) {
+                    var newcolor = (actor.color.red <= 8) ? 0 : actor.color.red - 8;
+                    Entities.editEntity(this.actorID, { color: { red: newcolor, green: actor.color.green, blue: actor.color.blue }});
+                } else if (action == 29) {
+                    var newcolor = (actor.color.green <= 8) ? 0 : actor.color.green - 8;
+                    Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: newcolor, blue: actor.color.blue }});
+                } else if (action == 30) {
+                    var newcolor = (actor.color.blue <= 8) ? 0 : actor.color.blue - 8;
+                    Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: actor.color.green, blue: newcolor }});
+
+                }
     
             }
 
+            if (Vec3.length(actor.position) > AVATAR_DIST_MAX) Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, Vec3.normalize(actor.position)) });
+
         }
 
-        if (action == 28) {
-            Entities.editEntity(this.entityID, { color: { red: (entity.color.red==255)?0:255, green: entity.color.green, blue: entity.color.blue }});
-        } else if (action == 29) {
-            Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: (entity.color.green==255)?0:255, blue: entity.color.blue }});
-        } else if (action == 30) {
-            Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: (entity.color.blue==255)?0:255 }});
-    
-        } else if (action == 31) {
-            // wait for score
+
+        if (action == 31) {
+            // wait for scoring
+            // print("GymAC.handleGymMessage: scoring: "+this.environment.info.scoring);
             // this.environment.info.scoring = Date.now() + SCORE_WAIT;
-            this.environment.info.scoring = !this.environment.info.scoring;
-            if (!this.environment.info.scoring) this.environment.done = true;
-            else Entities.editEntity(this.entityID, { position: POS_ZERO });
+            // this.environment.info.scoring = !this.environment.info.scoring;
+            // if (!this.environment.info.scoring) this.environment.done = true;
+            this.environment.info.scoringwait++;
+            if (this.environment.info.scoringwait > 15) {
+                this.environment.info.scoringwait = 0;
+                this.environment.info.scoring = !this.environment.info.scoring;
+                if (!this.environment.info.scoring) this.environment.done = true;
+                else {
+                    // Entities.editEntity(this.actorID, { shape: SHAPE_ZERO, dimensions: { x: 1.0, y: 1.0, z: 1.0 }, color: COLOR_PINK, alpha: 0.5 });
+                    Entities.editEntity(this.actorID, { shape: SHAPE_ZERO, dimensions: { x: 1.0, y: 1.0, z: 1.0 }, alpha: 0.5 });
+                    // Entities.editEntity(this.actorID, { visible: false });
+                }
+            }
         }
     
 
-
-        // } else if (action == 10) {
-        //     newcolor = (entity.color.red >= 251) ? 255 : entity.color.red + 4;
-        //     Entities.editEntity(this.entityID, { color: { red: newcolor, green: entity.color.green, blue: entity.color.blue }});
-        // } else if (action == 11) {
-        //     newcolor = (entity.color.green >= 251) ? 255 : entity.color.green + 4;
-        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: newcolor, blue: entity.color.blue }});
-        // } else if (action == 12) {
-        //     newcolor = (entity.color.blue >= 251) ? 255 : entity.color.blue + 4;
-        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: newcolor }});
-
-        // } else if (action == 13) {
-        //     newcolor = (entity.color.red <= 4) ? 0 : entity.color.red - 4;
-        //     Entities.editEntity(this.entityID, { color: { red: newcolor, green: entity.color.green, blue: entity.color.blue }});
-        // } else if (action == 14) {
-        //     newcolor = (entity.color.green <= 4) ? 0 : entity.color.green - 4;
-        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: newcolor, blue: entity.color.blue }});
-        // } else if (action == 15) {
-        //     newcolor = (entity.color.blue <= 4) ? 0 : entity.color.blue - 4;
-        //     Entities.editEntity(this.entityID, { color: { red: entity.color.red, green: entity.color.green, blue: newcolor }});
+        // if (action == 28) {
+        //     Entities.editEntity(this.actorID, { color: { red: (actor.color.red==255)?0:255, green: actor.color.green, blue: actor.color.blue }});
+        // } else if (action == 29) {
+        //     Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: (actor.color.green==255)?0:255, blue: actor.color.blue }});
+        // } else if (action == 30) {
+        //     Entities.editEntity(this.actorID, { color: { red: actor.color.red, green: actor.color.green, blue: (actor.color.blue==255)?0:255 }});
 
         // else {
-        //     // Entities.editEntity(this.entityID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
-        //     // Entities.editEntity(this.entityID, { color: { red: 10 * action, green: 10 * action, blue: 10 * action} });
+        //     // Entities.editEntity(this.actorID, { color: { red: 255 * action[0], green: 255 * action[1], blue: 255 * action[2]} });
+        //     // Entities.editEntity(this.actorID, { color: { red: 10 * action, green: 10 * action, blue: 10 * action} });
         // }
 
 
@@ -348,6 +583,11 @@ function unload() {
     Gym.onGymMessage.disconnect(handleGymMessage);
     // Gym.onGymAgentChange.disconnect(handleGymAgentChange);
 }
+
+// function platformPeopleClick(entityID, event) {
+//     print("Mouse pressed on entity: " + JSON.stringify(event));
+// }
+// Script.addEventHandler(platformPeople, "mousePressOnEntity", platformPeopleClick);
 
 // Gym.onGymAgentChange.connect(handleGymAgentChange);
 Gym.onGymMessage.connect(handleGymMessage);
@@ -417,4 +657,5 @@ Script.scriptEnding.connect(unload);
 // "grab":{"grabbable":false,"grabKinematic":true,"grabFollowsController":true,"triggerable":true,"equippable":false,"equippableLeftPosition":{"x":0,"y":0,"z":0},"equippableLeftRotation":{"x":-0.0000152587890625,"y":-0.0000152587890625,"z":-0.0000152587890625,"w":1},"equippableRightPosition":{"x":0,"y":0,"z":0},"equippableRightRotation":{"x":-0.0000152587890625,"y":-0.0000152587890625,"z":-0.0000152587890625,"w":1},"equippableIndicatorURL":"","equippableIndicatorScale":{"x":1,"y":1,"z":1},"equippableIndicatorOffset":{"x":0,"y":0,"z":0}},
 // "renderInfo":{},
 // "clientOnly":false,"avatarEntity":false,"localEntity":false}
+
 
