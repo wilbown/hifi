@@ -17,13 +17,13 @@ var agent = 5558;
 var obs_size = 4*4*3; //max observation size
 
 var actorID = "{177dfde6-8dbd-4f3e-8efd-88684b1c54b8}";
-var platformID = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
-var platformArtID = "{bbd37eca-9650-4b8d-a063-fac2d3150ebb}";
-var platformPeople = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
+// var platformID = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
+// var platformArtID = "{bbd37eca-9650-4b8d-a063-fac2d3150ebb}";
+// var platformPeople = "{71fecec1-318c-472c-b8ab-14dbf8a59efb}";
 
 // Agent.isAvatar = true; // getAvatarsInRange detects this script's Avatar if this is true
 
-var ROT_PLATFORM = 1.0;
+// var ROT_PLATFORM = 1.0;
 var ROT_PLATFORM_ART = Quat.fromPitchYawRollDegrees(0, 40, 0);
 
 var DIST_MAX = 3
