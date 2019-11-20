@@ -108,9 +108,19 @@ void Avatar::setShowMyLookAtVectors(bool showMine) {
     showMyLookAtVectors = showMine;
 }
 
+static bool showMyLookAtTarget = false;
+void Avatar::setShowMyLookAtTarget(bool showMine) {
+    showMyLookAtTarget = showMine;
+}
+
 static bool showOtherLookAtVectors = false;
 void Avatar::setShowOtherLookAtVectors(bool showOthers) {
     showOtherLookAtVectors = showOthers;
+}
+
+static bool showOtherLookAtTarget = false;
+void Avatar::setShowOtherLookAtTarget(bool showOthers) {
+    showOtherLookAtTarget = showOthers;
 }
 
 static bool showCollisionShapes = false;
@@ -140,6 +150,7 @@ AvatarTransit::Status AvatarTransit::update(float deltaTime, const glm::vec3& av
         reset();
         _status = Status::ENDED;
     }
+
     return _status;
 }
 
@@ -517,7 +528,7 @@ void Avatar::relayJointDataToChildren() {
 }
 
 /**jsdoc
- * An avatar has different types of data simulated at different rates, in Hz.
+ * <p>An avatar has different types of data simulated at different rates, in Hz.</p>
  *
  * <table>
  *   <thead>
@@ -711,6 +722,14 @@ void Avatar::updateRenderItem(render::Transaction& transaction) {
 
 void Avatar::postUpdate(float deltaTime, const render::ScenePointer& scene) {
 
+    if (isMyAvatar() ? showMyLookAtTarget : showOtherLookAtTarget) {
+        glm::vec3 lookAtTarget = getHead()->getLookAtPosition();
+        DebugDraw::getInstance().addMarker(QString("look-at-") + getID().toString(),
+                                           glm::quat(), lookAtTarget, glm::vec4(1), 1.0f);
+    } else {
+        DebugDraw::getInstance().removeMarker(QString("look-at-") + getID().toString());
+    }
+
     if (isMyAvatar() ? showMyLookAtVectors : showOtherLookAtVectors) {
         const float EYE_RAY_LENGTH = 10.0;
         const glm::vec4 BLUE(0.0f, 0.0f, _lookAtSnappingEnabled ? 1.0f : 0.25f, 1.0f);
@@ -818,7 +837,8 @@ void Avatar::render(RenderArgs* renderArgs) {
         float distanceToTarget = glm::length(toTarget);
         const float DISPLAYNAME_DISTANCE = 20.0f;
         updateDisplayNameAlpha(distanceToTarget < DISPLAYNAME_DISTANCE);
-        if (!isMyAvatar() || renderArgs->_cameraMode != (int8_t)CAMERA_MODE_FIRST_PERSON) {
+        if (!isMyAvatar() || !(renderArgs->_cameraMode == (int8_t)CAMERA_MODE_FIRST_PERSON_LOOK_AT
+                          || renderArgs->_cameraMode == (int8_t)CAMERA_MODE_FIRST_PERSON)) {
             auto& frustum = renderArgs->getViewFrustum();
             auto textPosition = getDisplayNamePosition();
             if (frustum.pointIntersectsFrustum(textPosition)) {

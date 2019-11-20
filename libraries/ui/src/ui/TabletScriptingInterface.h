@@ -39,9 +39,10 @@ class QmlWindowClass;
 class OffscreenQmlSurface;
 
 /**jsdoc
- * The <code>Tablet</code> API provides the facilities to work with the system or other tablet. In toolbar mode (Developer &gt; 
- * UI &gt; Tablet Becomes Toolbar), the tablet's menu buttons are displayed in a toolbar and other tablet content is displayed 
- * in a dialog.
+ * The <code>Tablet</code> API provides the facilities to work with the system or other tablet. In toolbar mode (see Developer 
+ * &gt; UI options), the tablet's menu buttons are displayed in a toolbar and other tablet content is displayed in a dialog.
+ *
+ * <p>See also the {@link Toolbars} API for working with toolbars.</p>
  *
  * @namespace Tablet
  *
@@ -69,7 +70,7 @@ class TabletScriptingInterface : public QObject, public Dependency {
 public:
 
     /**jsdoc
-     * Standard tablet sounds.
+     * <p>Standard tablet sounds.</p>
      * <table>
      *   <thead>
      *     <tr><th>Value</th><th>Description</th></tr>
@@ -98,7 +99,7 @@ public:
     void setToolbarScriptingInterface(ToolbarScriptingInterface* toolbarScriptingInterface) { _toolbarScriptingInterface = toolbarScriptingInterface; }
 
     /**jsdoc
-     * Gets an instance of a tablet. A new tablet is created if one with the specified ID doesn't already exist.
+     * Gets an instance of a tablet. A new tablet is created if one with the specified name doesn't already exist.
      * @function Tablet.getTablet
      * @param {string} name - A unique name that identifies the tablet.
      * @returns {TabletProxy} The tablet instance.
@@ -210,11 +211,10 @@ private:
 Q_DECLARE_METATYPE(TabletButtonsProxyModel*);
 
 /**jsdoc
- * An instance of a tablet. In toolbar mode (Developer &gt; 
- * UI &gt; Tablet Becomes Toolbar), the tablet's menu buttons are displayed in a toolbar and other tablet content is displayed 
- * in a dialog.
+ * An instance of a tablet. In toolbar mode (see Developer &gt; UI options), the tablet's menu buttons are displayed in a 
+ * toolbar and other tablet content is displayed in a dialog.
  *
- * <p>Create a new tablet or retrieve an existing tablet using {@link Tablet.getTablet}.</p>
+ * <p>Retrieve an existing tablet or create a new tablet using {@link Tablet.getTablet}.</p>
  *
  * @class TabletProxy
  *
@@ -273,12 +273,15 @@ public:
     Q_INVOKABLE void gotoHomeScreen();
 
     /**jsdoc
-     * Opens a web page or app on the tablet.
+     * Opens a web app or page in addition to any current app. In tablet mode, the app or page is displayed over the top of the
+     * current app; in toolbar mode, the app is opened in a new window that replaces any current window open. If in tablet
+     * mode, the app or page can be closed using {@link TabletProxy#returnToPreviousApp}.
      * @function TabletProxy#gotoWebScreen
      * @param {string} url - The URL of the web page or app.
      * @param {string} [injectedJavaScriptUrl=""] - The URL of JavaScript to inject into the web page.
      * @param {boolean} [loadOtherBase=false] - If <code>true</code>, the web page or app is displayed in a frame with "back" 
      * and "close" buttons.
+     * <p class="important">Deprecated: This parameter is deprecated and will be removed.</p>
      */
     Q_INVOKABLE void gotoWebScreen(const QString& url);
     Q_INVOKABLE void gotoWebScreen(const QString& url, const QString& injectedJavaScriptUrl, bool loadOtherBase = false);
@@ -293,29 +296,31 @@ public:
     Q_INVOKABLE void loadQMLSource(const QVariant& path, bool resizable = false);
 
     /**jsdoc
-     * Internal function, do not call from scripts
      * @function TabletProxy#loadQMLSourceImpl
+     * @deprecated This function is deprecated and will be removed.
      */
+    // Internal function, do not call from scripts.
     Q_INVOKABLE void loadQMLSourceImpl(const QVariant& path, bool resizable, bool localSafeContext);
 
-     /**jsdoc
-     * Internal function, do not call from scripts
-     * @function TabletProxy#loadHTMLSourceImpl
+    /**jsdoc
+     * @function TabletProxy#loadHTMLSourceOnTopImpl
+     * @deprecated This function is deprecated and will be removed.
      */
-    Q_INVOKABLE void loadHTMLSourceImpl(const QVariant& url, const QString& injectJavaScriptUrl, bool localSafeContext);
+    // Internal function, do not call from scripts.
+    Q_INVOKABLE void loadHTMLSourceOnTopImpl(const QString& url, const QString& injectedJavaScriptUrl, bool loadOtherBase, bool localSafeContext);
 
-     /**jsdoc
-     * Internal function, do not call from scripts
-     * @function TabletProxy#loadHTMLSourceImpl
-     */
-    Q_INVOKABLE void loadHTMLSourceImpl(const QString& url, const QString& injectedJavaScriptUrl, bool loadOtherBase, bool localSafeContext);
-
-     /**jsdoc
-     * Internal function, do not call from scripts
+    /**jsdoc
      * @function TabletProxy#returnToPreviousAppImpl
+     * @deprecated This function is deprecated and will be removed.
      */
+    // Internal function, do not call from scripts.
     Q_INVOKABLE void returnToPreviousAppImpl(bool localSafeContext);
 
+    /**jsdoc
+     * @function TabletProxy#loadQMLOnTopImpl
+     * @deprecated This function is deprecated and will be removed.
+     */
+    // Internal function, do not call from scripts.
     Q_INVOKABLE void loadQMLOnTopImpl(const QVariant& path, bool localSafeContext);
 
     // FIXME: This currently relies on a script initializing the tablet (hence the bool denoting success);
@@ -354,8 +359,8 @@ public:
 
     /**jsdoc
      * Opens a web app or page in addition to any current app. In tablet mode, the app or page is displayed over the top of the
-     * current app; in toolbar mode, the app is opened in a new window. If in tablet mode, the app or page can be closed using
-     * {@link TabletProxy#returnToPreviousApp}.
+     * current app; in toolbar mode, the app is opened in a new window that replaces any current window open. If in tablet 
+     * mode, the app or page can be closed using {@link TabletProxy#returnToPreviousApp}.
      * @function TabletProxy#loadWebScreenOnTop
      * @param {string} path - The URL of the web page or HTML app.
      * @param {string} [injectedJavaScriptURL=""] - The URL of JavaScript to inject into the web page.

@@ -225,18 +225,28 @@ Flickable {
                 SimplifiedControls.RadioButton {
                     id: firstPerson
                     text: "First Person View"
-                    checked: Camera.mode === "first person"
+                    checked: Camera.mode === "first person look at"
                     onClicked: {
-                        Camera.mode = "first person"
+                        Camera.mode = "first person look at"
                     }
                 }
 
                 SimplifiedControls.RadioButton {
                     id: thirdPerson
                     text: "Third Person View"
-                    checked: Camera.mode === "third person"
+                    checked: Camera.mode === "look at"
                     onClicked: {
-                        Camera.mode = "third person"
+                        Camera.mode = "look at"
+                    }
+                }
+
+                SimplifiedControls.RadioButton {
+                    id: selfie
+                    text: "Selfie"
+                    checked: Camera.mode === "selfie"
+                    visible: true
+                    onClicked: {
+                        Camera.mode = "selfie"
                     }
                 }
                 
@@ -244,11 +254,21 @@ Flickable {
                     target: Camera
 
                     onModeUpdated: {
-                        if (Camera.mode === "first person") {
+                        if (Camera.mode === "first person look at") {
                             firstPerson.checked = true
-                        } else if (Camera.mode === "third person") {
+                        } else if (Camera.mode === "look at") {
                             thirdPerson.checked = true
+                        } else if (Camera.mode === "selfie" && HMD.active) {
+                            selfie.checked = true
                         }
+                    }
+                }
+
+                Connections {
+                    target: HMD
+
+                    onDisplayModeChanged: {
+                        selfie.visible = isHMDMode ? false : true
                     }
                 }
             }

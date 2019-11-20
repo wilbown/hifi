@@ -71,7 +71,7 @@ Flickable {
         ColumnLayout {
             id: controlsContainer
             Layout.preferredWidth: parent.width
-        Layout.topMargin: 24
+            Layout.topMargin: 24
             spacing: 0
 
             HifiStylesUit.GraphikSemiBold {
@@ -154,6 +154,45 @@ Flickable {
                 }
             }
         }
+
+        ColumnLayout {
+            Layout.preferredWidth: parent.width
+            spacing: 0
+
+            HifiStylesUit.GraphikSemiBold {
+                text: "VR Rotation Mode"
+                Layout.preferredWidth: parent.width
+                height: paintedHeight
+                size: 22
+                color: simplifiedUI.colors.text.white
+            }
+
+            ColumnLayout {
+                width: parent.width
+                Layout.topMargin: simplifiedUI.margins.settings.settingsGroupTopMargin
+                spacing: simplifiedUI.margins.settings.spacingBetweenRadiobuttons
+
+                ButtonGroup { id: rotationButtonGroup }
+
+                SimplifiedControls.RadioButton {
+                    text: "Snap Turn"
+                    ButtonGroup.group: rotationButtonGroup
+                    checked: MyAvatar.getSnapTurn() === true
+                    onClicked: {
+                        MyAvatar.setSnapTurn(true);
+                    }
+                }
+
+                SimplifiedControls.RadioButton {
+                    text: "Smooth Turn"
+                    ButtonGroup.group: rotationButtonGroup
+                    checked: MyAvatar.getSnapTurn() === false
+                    onClicked: {
+                        MyAvatar.setSnapTurn(false);
+                    }
+                }
+            }
+        }
         
         ColumnLayout {
             id: micControlsContainer
@@ -220,13 +259,13 @@ Flickable {
                 Layout.preferredHeight: contentItem.height
                 Layout.topMargin: simplifiedUI.margins.settings.settingsGroupTopMargin
                 interactive: false
-                spacing: simplifiedUI.margins.settings.spacingBetweenRadiobuttons
                 clip: true
                 model: AudioScriptingInterface.devices.input
                 delegate: Item {
-                    width: parent.width
-                    height: inputDeviceCheckbox.height
-
+                    width:   parent.width
+                    height:  model.type != "desktop" ? inputDeviceCheckbox.height + simplifiedUI.margins.settings.spacingBetweenRadiobuttons : 0
+                    visible: model.type != "desktop"
+                     
                     SimplifiedControls.RadioButton {
                         id: inputDeviceCheckbox
                         anchors.left: parent.left
@@ -316,13 +355,12 @@ Flickable {
                 Layout.preferredHeight: contentItem.height
                 Layout.topMargin: simplifiedUI.margins.settings.settingsGroupTopMargin
                 interactive: false
-                spacing: simplifiedUI.margins.settings.spacingBetweenRadiobuttons
                 clip: true
                 model: AudioScriptingInterface.devices.output
                 delegate: Item {
                     width: parent.width
-                    height: outputDeviceCheckbox.height
-
+                    height:  model.type != "desktop" ? outputDeviceCheckbox.height + simplifiedUI.margins.settings.spacingBetweenRadiobuttons : 0
+                    visible: model.type != "desktop"
                     SimplifiedControls.RadioButton {
                         id: outputDeviceCheckbox
                         anchors.left: parent.left

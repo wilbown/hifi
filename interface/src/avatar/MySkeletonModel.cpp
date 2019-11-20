@@ -112,19 +112,19 @@ static AnimPose computeHipsInSensorFrame(MyAvatar* myAvatar, bool isFlying) {
 void MySkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
     const HFMModel& hfmModel = getHFMModel();
 
-    Head* head = _owningAvatar->getHead();
-
-    // make sure lookAt is not too close to face (avoid crosseyes)
-    glm::vec3 lookAt = head->getLookAtPosition();
-    glm::vec3 focusOffset = lookAt - _owningAvatar->getHead()->getEyePosition();
-    float focusDistance = glm::length(focusOffset);
-    const float MIN_LOOK_AT_FOCUS_DISTANCE = 1.0f;
-    if (focusDistance < MIN_LOOK_AT_FOCUS_DISTANCE && focusDistance > EPSILON) {
-        lookAt = _owningAvatar->getHead()->getEyePosition() + (MIN_LOOK_AT_FOCUS_DISTANCE / focusDistance) * focusOffset;
-    }
-
     MyAvatar* myAvatar = static_cast<MyAvatar*>(_owningAvatar);
     assert(myAvatar);
+
+    Head* head = _owningAvatar->getHead();
+
+    bool eyePosesValid = (myAvatar->getControllerPoseInSensorFrame(controller::Action::LEFT_EYE).isValid() ||
+                          myAvatar->getControllerPoseInSensorFrame(controller::Action::RIGHT_EYE).isValid());
+    glm::vec3 lookAt;
+    if (eyePosesValid) {
+        lookAt = head->getLookAtPosition(); // don't apply no-crosseyes code when eyes are being tracked
+    } else {
+        lookAt = avoidCrossedEyes(head->getLookAtPosition());
+    }
 
     Rig::ControllerParameters params;
 
@@ -315,6 +315,10 @@ void MySkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
     }
     const float TALKING_TIME_THRESHOLD = 0.75f;
     params.isTalking = head->getTimeWithoutTalking() <= TALKING_TIME_THRESHOLD;
+
+    //pass X and Z input key floats (-1 to 1) to rig
+    params.inputX = myAvatar->getDriveKey(MyAvatar::TRANSLATE_X);
+    params.inputZ = myAvatar->getDriveKey(MyAvatar::TRANSLATE_Z);
 
     myAvatar->updateRigControllerParameters(params);
 

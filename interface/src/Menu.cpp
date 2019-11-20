@@ -37,7 +37,6 @@
 #include "avatar/AvatarManager.h"
 #include "avatar/AvatarPackager.h"
 #include "AvatarBookmarks.h"
-#include "devices/DdeFaceTracker.h"
 #include "MainWindow.h"
 #include "render/DrawStatus.h"
 #include "scripting/MenuScriptingInterface.h"
@@ -54,6 +53,7 @@
 #include "SpeechRecognizer.h"
 #endif
 
+#include "MeshPartPayload.h"
 #include "scripting/RenderScriptingInterface.h"
 
 extern bool DEV_DECIMATE_TEXTURES;
@@ -172,24 +172,24 @@ Menu::Menu() {
 
     // View > First Person
     auto firstPersonAction = cameraModeGroup->addAction(addCheckableActionToQMenuAndActionHash(
-                                   viewMenu, MenuOption::FirstPerson, 0,
+                                   viewMenu, MenuOption::FirstPersonLookAt, 0,
                                    true, qApp, SLOT(cameraMenuChanged())));
 
     firstPersonAction->setProperty(EXCLUSION_GROUP_KEY, QVariant::fromValue(cameraModeGroup));
 
-    // View > Third Person
-    auto thirdPersonAction = cameraModeGroup->addAction(addCheckableActionToQMenuAndActionHash(
-                                   viewMenu, MenuOption::ThirdPerson, 0,
+    // View > Look At
+    auto lookAtAction = cameraModeGroup->addAction(addCheckableActionToQMenuAndActionHash(
+                                   viewMenu, MenuOption::LookAtCamera, 0,
                                    false, qApp, SLOT(cameraMenuChanged())));
 
-    thirdPersonAction->setProperty(EXCLUSION_GROUP_KEY, QVariant::fromValue(cameraModeGroup));
+    lookAtAction->setProperty(EXCLUSION_GROUP_KEY, QVariant::fromValue(cameraModeGroup));
 
-    // View > Mirror
-    auto viewMirrorAction = cameraModeGroup->addAction(addCheckableActionToQMenuAndActionHash(
-                                   viewMenu, MenuOption::FullscreenMirror, 0,
-                                   false, qApp, SLOT(cameraMenuChanged())));
+    // View > Selfie
+    auto selfieAction = cameraModeGroup->addAction(addCheckableActionToQMenuAndActionHash(
+        viewMenu, MenuOption::SelfieCamera, 0,
+        false, qApp, SLOT(cameraMenuChanged())));
 
-    viewMirrorAction->setProperty(EXCLUSION_GROUP_KEY, QVariant::fromValue(cameraModeGroup));
+    selfieAction->setProperty(EXCLUSION_GROUP_KEY, QVariant::fromValue(cameraModeGroup));
 
     viewMenu->addSeparator();
 
@@ -471,6 +471,11 @@ Menu::Menu() {
     addCheckableActionToQMenuAndActionHash(renderOptionsMenu, MenuOption::ComputeBlendshapes, 0, true,
         DependencyManager::get<ModelBlender>().data(), SLOT(setComputeBlendshapes(bool)));
 
+    action = addCheckableActionToQMenuAndActionHash(renderOptionsMenu, MenuOption::MaterialProceduralShaders, 0, false);
+    connect(action, &QAction::triggered, [action] {
+        MeshPartPayload::enableMaterialProceduralShaders = action->isChecked();
+    });
+
     {
         auto drawStatusConfig = qApp->getRenderEngine()->getConfiguration()->getConfig<render::DrawStatus>("RenderMainView.DrawStatus");
         addCheckableActionToQMenuAndActionHash(renderOptionsMenu, MenuOption::HighlightTransitions, 0, false,
@@ -493,73 +498,18 @@ Menu::Menu() {
     // Developer > Avatar >>>
     MenuWrapper* avatarDebugMenu = developerMenu->addMenu("Avatar");
 
-    // Developer > Avatar > Face Tracking
-    MenuWrapper* faceTrackingMenu = avatarDebugMenu->addMenu("Face Tracking");
-    {
-        QActionGroup* faceTrackerGroup = new QActionGroup(avatarDebugMenu);
-
-        bool defaultNoFaceTracking = true;
-#ifdef HAVE_DDE
-        defaultNoFaceTracking = false;
-#endif
-        QAction* noFaceTracker = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::NoFaceTracking,
-            0, defaultNoFaceTracking,
-            qApp, SLOT(setActiveFaceTracker()));
-        faceTrackerGroup->addAction(noFaceTracker);
-
-#ifdef HAVE_DDE
-        QAction* ddeFaceTracker = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::UseCamera,
-            0, true,
-            qApp, SLOT(setActiveFaceTracker()));
-        faceTrackerGroup->addAction(ddeFaceTracker);
-#endif
-    }
-#ifdef HAVE_DDE
-    faceTrackingMenu->addSeparator();
-    QAction* binaryEyelidControl = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::BinaryEyelidControl, 0, true);
-    binaryEyelidControl->setVisible(true);  // DDE face tracking is on by default
-    QAction* coupleEyelids = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::CoupleEyelids, 0, true);
-    coupleEyelids->setVisible(true);  // DDE face tracking is on by default
-    QAction* useAudioForMouth = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::UseAudioForMouth, 0, true);
-    useAudioForMouth->setVisible(true);  // DDE face tracking is on by default
-    QAction* ddeFiltering = addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::VelocityFilter, 0, true);
-    ddeFiltering->setVisible(true);  // DDE face tracking is on by default
-    QAction* ddeCalibrate = addActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::CalibrateCamera, 0,
-        DependencyManager::get<DdeFaceTracker>().data(), SLOT(calibrate()));
-    ddeCalibrate->setVisible(true);  // DDE face tracking is on by default
-    faceTrackingMenu->addSeparator();
-    addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::MuteFaceTracking,
-        [](bool mute) { FaceTracker::setIsMuted(mute); },
-        Qt::CTRL | Qt::SHIFT | Qt::Key_F, FaceTracker::isMuted());
-    addCheckableActionToQMenuAndActionHash(faceTrackingMenu, MenuOption::AutoMuteAudio, 0, false);
-#endif
-
-#ifdef HAVE_IVIEWHMD
-    // Developer > Avatar > Eye Tracking
-    MenuWrapper* eyeTrackingMenu = avatarDebugMenu->addMenu("Eye Tracking");
-    addCheckableActionToQMenuAndActionHash(eyeTrackingMenu, MenuOption::SMIEyeTracking, 0, false,
-        qApp, SLOT(setActiveEyeTracker()));
-    {
-        MenuWrapper* calibrateEyeTrackingMenu = eyeTrackingMenu->addMenu("Calibrate");
-        addActionToQMenuAndActionHash(calibrateEyeTrackingMenu, MenuOption::OnePointCalibration, 0,
-            qApp, SLOT(calibrateEyeTracker1Point()));
-        addActionToQMenuAndActionHash(calibrateEyeTrackingMenu, MenuOption::ThreePointCalibration, 0,
-            qApp, SLOT(calibrateEyeTracker3Points()));
-        addActionToQMenuAndActionHash(calibrateEyeTrackingMenu, MenuOption::FivePointCalibration, 0,
-            qApp, SLOT(calibrateEyeTracker5Points()));
-    }
-    addCheckableActionToQMenuAndActionHash(eyeTrackingMenu, MenuOption::SimulateEyeTracking, 0, false,
-        qApp, SLOT(setActiveEyeTracker()));
-#endif
-
     action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::AvatarReceiveStats, 0, false);
     connect(action, &QAction::triggered, [this]{ Avatar::setShowReceiveStats(isOptionChecked(MenuOption::AvatarReceiveStats)); });
     action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::ShowBoundingCollisionShapes, 0, false);
     connect(action, &QAction::triggered, [this]{ Avatar::setShowCollisionShapes(isOptionChecked(MenuOption::ShowBoundingCollisionShapes)); });
     action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::ShowMyLookAtVectors, 0, false);
     connect(action, &QAction::triggered, [this]{ Avatar::setShowMyLookAtVectors(isOptionChecked(MenuOption::ShowMyLookAtVectors)); });
+    action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::ShowMyLookAtTarget, 0, false);
+    connect(action, &QAction::triggered, [this]{ Avatar::setShowMyLookAtTarget(isOptionChecked(MenuOption::ShowMyLookAtTarget)); });
     action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::ShowOtherLookAtVectors, 0, false);
     connect(action, &QAction::triggered, [this]{ Avatar::setShowOtherLookAtVectors(isOptionChecked(MenuOption::ShowOtherLookAtVectors)); });
+    action = addCheckableActionToQMenuAndActionHash(avatarDebugMenu, MenuOption::ShowOtherLookAtTarget, 0, false);
+    connect(action, &QAction::triggered, [this]{ Avatar::setShowOtherLookAtTarget(isOptionChecked(MenuOption::ShowOtherLookAtTarget)); });
 
     auto avatarManager = DependencyManager::get<AvatarManager>();
     auto avatar = avatarManager->getMyAvatar();
@@ -653,11 +603,6 @@ Menu::Menu() {
             nodeList.data(), SLOT(toggleSendNewerDSConnectVersion(bool)));
     }
     #endif
-
-
-    // Developer >> Tests >>>
-    MenuWrapper* testMenu = developerMenu->addMenu("Tests");
-    addActionToQMenuAndActionHash(testMenu, MenuOption::RunClientScriptTests, 0, dialogsManager.data(), SLOT(showTestingResults()));
 
     // Developer > Timing >>>
     MenuWrapper* timingMenu = developerMenu->addMenu("Timing");
@@ -769,6 +714,7 @@ Menu::Menu() {
 
         addActionToQMenuAndActionHash(crashMenu, MenuOption::CrashOnShutdown, 0, qApp, SLOT(crashOnShutdown()));
     }
+    
 
     // Developer > Show Statistics
     addCheckableActionToQMenuAndActionHash(developerMenu, MenuOption::Stats, 0, true);
@@ -842,7 +788,7 @@ Menu::Menu() {
     // Help > Release Notes
     action = addActionToQMenuAndActionHash(helpMenu, "Release Notes");
     connect(action, &QAction::triggered, qApp, [] {
-        QDesktopServices::openUrl(QUrl("http://steamcommunity.com/games/390540/announcements/"));
+        QDesktopServices::openUrl(QUrl("https://docs.highfidelity.com/release-notes.html"));
     });
 
     // Help > Report a Bug!

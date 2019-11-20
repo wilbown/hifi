@@ -95,7 +95,7 @@ static const QString MAIN_STATE_MACHINE_RIGHT_HAND_POSITION("mainStateMachineRig
  * <p><strong>Warning:</strong> These properties are subject to change.
  * <table>
  *   <thead>
- *     <tr><th>Name</th><th>Type</p><th>Description</th>
+ *     <tr><th>Name</th><th>Type</th><th>Description</th>
  *   </thead>
  *   <tbody>
  *     <tr><td><code>userAnimNone</code></td><td>boolean</td><td><code>true</code> when no user overrideAnimation is 
@@ -545,7 +545,8 @@ QStringList Rig::getAnimationRoles() const {
             auto clipNode = std::dynamic_pointer_cast<AnimClip>(node);
             if (clipNode) {
                 // filter out the userAnims, they are for internal use only.
-                if (!clipNode->getID().startsWith("userAnim")) {
+                // also don't return additive blend node clips as valid roles.
+                if (!clipNode->getID().startsWith("userAnim") && clipNode->getBlendType() == AnimBlendType_Normal) {
                     list.append(node->getID());
                 }
             }
@@ -715,7 +716,7 @@ void Rig::reset(const HFMModel& hfmModel) {
     }
 }
 
-bool Rig::jointStatesEmpty() {
+bool Rig::jointStatesEmpty() const {
     return _internalPoseSet._relativePoses.empty();
 }
 
@@ -876,6 +877,20 @@ void Rig::setJointRotation(int index, bool valid, const glm::quat& rotation, flo
             _internalPoseSet._overridePoses[index].rot() = rotation;
         }
     }
+}
+
+bool Rig::getIsJointOverridden(int jointIndex) const {
+    if (QThread::currentThread() == thread()) {
+        if (isIndexValid(jointIndex)) {
+            return _internalPoseSet._overrideFlags[jointIndex];
+        }
+    } else {
+        QReadLocker readLock(&_externalPoseSetLock);
+        if (jointIndex >= 0 && jointIndex < (int)_externalPoseSet._overrideFlags.size()) {
+            return _externalPoseSet._overrideFlags[jointIndex];
+        }
+    }
+    return false;
 }
 
 bool Rig::getJointPositionInWorldFrame(int jointIndex, glm::vec3& position, glm::vec3 translation, glm::quat rotation) const {
@@ -1418,6 +1433,79 @@ void Rig::computeMotionAnimationState(float deltaTime, const glm::vec3& worldPos
         }
         _lastEnableInverseKinematics = _enableInverseKinematics;
 
+
+        //stategraph vars based on input
+        const float INPUT_DEADZONE_THRESHOLD = 0.05f;
+        const float SLOW_SPEED_THRESHOLD = 1.5f;
+
+        if (fabsf(_previousControllerParameters.inputX) <= INPUT_DEADZONE_THRESHOLD &&
+            fabsf(_previousControllerParameters.inputZ) <= INPUT_DEADZONE_THRESHOLD) {
+            // no WASD input
+            if (fabsf(forwardSpeed) <= SLOW_SPEED_THRESHOLD && fabsf(lateralSpeed) <= SLOW_SPEED_THRESHOLD) {
+                _animVars.set("isInputForward", false);
+                _animVars.set("isInputBackward", false);
+                _animVars.set("isInputRight", false);
+                _animVars.set("isInputLeft", false);
+                _animVars.set("isNotInput", true);
+                _animVars.set("isNotInputSlow", true);
+
+            } else {
+                _animVars.set("isInputForward", false);
+                _animVars.set("isInputBackward", false);
+                _animVars.set("isInputRight", false);
+                _animVars.set("isInputLeft", false);
+                _animVars.set("isNotInput", true);
+                _animVars.set("isNotInputSlow", false);
+            }
+        } else if (fabsf(_previousControllerParameters.inputZ) >= fabsf(_previousControllerParameters.inputX)) {
+            if (_previousControllerParameters.inputZ > 0.0f) {
+                // forward
+                _animVars.set("isInputForward", true);
+                _animVars.set("isInputBackward", false);
+                _animVars.set("isInputRight", false);
+                _animVars.set("isInputLeft", false);
+                _animVars.set("isNotInput", false);
+                _animVars.set("isNotInputSlow", false);
+            } else {
+                // backward
+                _animVars.set("isInputForward", false);
+                _animVars.set("isInputBackward", true);
+                _animVars.set("isInputRight", false);
+                _animVars.set("isInputLeft", false);
+                _animVars.set("isNotInput", false);
+                _animVars.set("isNotInputSlow", false);
+            }
+        } else {
+            if (_previousControllerParameters.inputX > 0.0f) {
+                // right
+                if (!_headEnabled) {
+                    _animVars.set("isInputRight", true);
+                } else {
+                    _animVars.set("isInputRight", false);
+                }
+
+                _animVars.set("isInputLeft", false);
+                _animVars.set("isInputForward", false);
+                _animVars.set("isInputBackward", false);
+                _animVars.set("isNotInput", false);
+                _animVars.set("isNotInputSlow", false);
+            } else {
+                // left
+                if (!_headEnabled) {
+                    _animVars.set("isInputLeft", true);
+                } else {
+                    _animVars.set("isInputLeft", false);
+                }
+
+                _animVars.set("isInputForward", false);
+                _animVars.set("isInputBackward", false);
+                _animVars.set("isInputRight", false);
+                _animVars.set("isNotInput", false);
+                _animVars.set("isNotInputSlow", false);
+            }
+        }
+
+
     }
     _lastForward = forward;
     _lastPosition = worldPosition;
@@ -1644,7 +1732,7 @@ void Rig::updateHead(bool headEnabled, bool hipsEnabled, const AnimPose& headPos
             _animVars.set("splineIKEnabled", false);
             _animVars.unset("headPosition");
             _animVars.set("headRotation", headPose.rot());
-            _animVars.set("headType", (int)IKTarget::Type::RotationOnly);
+            _animVars.set("headType", (int)IKTarget::Type::Unknown);
         }
     }
 }
@@ -2146,6 +2234,7 @@ void Rig::updateFromControllerParameters(const ControllerParameters& params, flo
         }
     }
 
+
     _headEnabled = params.primaryControllerFlags[PrimaryControllerType_Head] & (uint8_t)ControllerFlags::Enabled;
     bool leftHandEnabled = params.primaryControllerFlags[PrimaryControllerType_LeftHand] & (uint8_t)ControllerFlags::Enabled;
     bool rightHandEnabled = params.primaryControllerFlags[PrimaryControllerType_RightHand] & (uint8_t)ControllerFlags::Enabled;
@@ -2274,6 +2363,7 @@ void Rig::initAnimGraph(const QUrl& url) {
             // abort load if the previous skeleton was deleted.
             auto sharedSkeletonPtr = weakSkeletonPtr.lock();
             if (!sharedSkeletonPtr) {
+                emit onLoadFailed();
                 return;
             }
 
@@ -2307,8 +2397,9 @@ void Rig::initAnimGraph(const QUrl& url) {
             }
             emit onLoadComplete();
         });
-        connect(_animLoader.get(), &AnimNodeLoader::error, [url](int error, QString str) {
+        connect(_animLoader.get(), &AnimNodeLoader::error, [this, url](int error, QString str) {
             qCritical(animation) << "Error loading: code = " << error << "str =" << str;
+            emit onLoadFailed();
         });
 
         connect(_networkLoader.get(), &AnimNodeLoader::success, [this, weakSkeletonPtr, networkUrl](AnimNode::Pointer nodeIn) {
@@ -2336,6 +2427,8 @@ void Rig::initAnimGraph(const QUrl& url) {
         connect(_networkLoader.get(), &AnimNodeLoader::error, [networkUrl](int error, QString str) {
             qCritical(animation) << "Error loading: code = " << error << "str =" << str;
         });
+    } else {
+        emit onLoadComplete();
     }
 }
 
@@ -2630,4 +2723,9 @@ float Rig::getUnscaledEyeHeight() const {
     } else {
         return DEFAULT_AVATAR_EYE_HEIGHT;
     }
+}
+
+void Rig::setDirectionalBlending(const QString& targetName, const glm::vec3& blendingTarget, const QString& alphaName, float alpha) {
+    _animVars.set(targetName, blendingTarget);
+    _animVars.set(alphaName, alpha);
 }

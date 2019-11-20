@@ -93,20 +93,24 @@ void SkeletonModel::initJointStates() {
     emit skeletonLoaded();
 }
 
+glm::vec3 SkeletonModel::avoidCrossedEyes(const glm::vec3& lookAt) {
+    // make sure lookAt is not too close to face (avoid crosseyes)
+    glm::vec3 focusOffset = lookAt - _owningAvatar->getHead()->getEyePosition();
+    float focusDistance = glm::length(focusOffset);
+    const float MIN_LOOK_AT_FOCUS_DISTANCE = 1.0f;
+    if (focusDistance < MIN_LOOK_AT_FOCUS_DISTANCE && focusDistance > EPSILON) {
+        return _owningAvatar->getHead()->getEyePosition() + (MIN_LOOK_AT_FOCUS_DISTANCE / focusDistance) * focusOffset;
+    } else {
+        return lookAt;
+    }
+}
+
 // Called within Model::simulate call, below.
 void SkeletonModel::updateRig(float deltaTime, glm::mat4 parentTransform) {
     assert(!_owningAvatar->isMyAvatar());
 
     Head* head = _owningAvatar->getHead();
-
-    // make sure lookAt is not too close to face (avoid crosseyes)
-    glm::vec3 lookAt = head->getCorrectedLookAtPosition();
-    glm::vec3 focusOffset = lookAt - _owningAvatar->getHead()->getEyePosition();
-    float focusDistance = glm::length(focusOffset);
-    const float MIN_LOOK_AT_FOCUS_DISTANCE = 1.0f;
-    if (focusDistance < MIN_LOOK_AT_FOCUS_DISTANCE && focusDistance > EPSILON) {
-        lookAt = _owningAvatar->getHead()->getEyePosition() + (MIN_LOOK_AT_FOCUS_DISTANCE / focusDistance) * focusOffset;
-    }
+    glm::vec3 lookAt = avoidCrossedEyes(head->getCorrectedLookAtPosition());
 
     // no need to call Model::updateRig() because otherAvatars get their joint state
     // copied directly from AvtarData::_jointData (there are no Rig animations to blend)
@@ -150,8 +154,9 @@ void SkeletonModel::updateAttitude(const glm::quat& orientation) {
 // but just before head has been simulated.
 void SkeletonModel::simulate(float deltaTime, bool fullUpdate) {
     updateAttitude(_owningAvatar->getWorldOrientation());
+    setBlendshapeCoefficients(_owningAvatar->getHead()->getSummedBlendshapeCoefficients());
+
     if (fullUpdate) {
-        setBlendshapeCoefficients(_owningAvatar->getHead()->getSummedBlendshapeCoefficients());
 
         Parent::simulate(deltaTime, fullUpdate);
 
@@ -288,6 +293,15 @@ bool SkeletonModel::getEyeModelPositions(glm::vec3& firstEyePosition, glm::vec3&
     return false;
 }
 
+
+bool SkeletonModel::getIsJointOverridden(int jointIndex) const {
+    // has this joint been set by a script?
+    if (!isLoaded() || _rig.jointStatesEmpty()) {
+        return false;
+    }
+    return _rig.getIsJointOverridden(jointIndex);
+}
+
 bool SkeletonModel::getEyePositions(glm::vec3& firstEyePosition, glm::vec3& secondEyePosition) const {
     if (getEyeModelPositions(firstEyePosition, secondEyePosition)) {
         firstEyePosition = _translation + _rotation * firstEyePosition;
@@ -352,4 +366,3 @@ bool SkeletonModel::hasSkeleton() {
 
 void SkeletonModel::onInvalidate() {
 }
-

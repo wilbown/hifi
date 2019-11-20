@@ -16,10 +16,12 @@
 // *************************************
 // #region dependencies
 
+
 // The information needed to properly use the sprite sheets and get the general information
 // about the emojis
 var emojiList = Script.require("./emojiApp/resources/modules/emojiList.js");
 var customEmojiList = Script.require("./emojiApp/resources/modules/customEmojiList.js");
+
 
 // #endregion
 // *************************************
@@ -181,6 +183,7 @@ function maybeClearClapSoundInterval() {
     }
 }
 
+
 // URLs for this fn are relative to SimplifiedEmoteIndicator.qml
 function toggleReaction(reaction) {
     var reactionEnding = reactionsBegun.indexOf(reaction) > -1;
@@ -192,6 +195,7 @@ function toggleReaction(reaction) {
     }
 }
 
+
 function maybeDeleteRemoteIndicatorTimeout() {
     if (restoreEmoteIndicatorTimeout) {
         Script.clearTimeout(restoreEmoteIndicatorTimeout);
@@ -202,6 +206,48 @@ function maybeDeleteRemoteIndicatorTimeout() {
 var reactionsBegun = [];
 var pointReticle = null;
 var mouseMoveEventsConnected = false;
+var targetPointInterpolateConnected = false;
+var pointAtTarget = Vec3.ZERO;
+var isReticleVisible = true;
+
+function targetPointInterpolate() {
+    if (reticlePosition) {
+        pointAtTarget = Vec3.mix(pointAtTarget, reticlePosition, POINT_AT_MIX_ALPHA);
+        isReticleVisible = MyAvatar.setPointAt(pointAtTarget);
+    }
+}
+
+
+function maybeClearInputAudioLevelsInterval() {
+    if (checkInputAudioLevelsInterval) {
+        Script.clearInterval(checkInputAudioLevelsInterval);
+        checkInputAudioLevelsInterval = false;
+        currentNumTimesAboveThreshold = 0;
+    }
+}
+
+
+var currentNumTimesAboveThreshold = 0;
+var checkInputAudioLevelsInterval;
+// The values below are determined empirically and may require tweaking over time if users
+// notice false-positives or false-negatives.
+var CHECK_INPUT_AUDIO_LEVELS_INTERVAL_MS = 200;
+var AUDIO_INPUT_THRESHOLD = 130;
+var NUM_REQUIRED_LEVELS_ABOVE_AUDIO_INPUT_THRESHOLD = 4;
+function checkInputLevelsCallback() {
+    if (MyAvatar.audioLoudness > AUDIO_INPUT_THRESHOLD) {
+        currentNumTimesAboveThreshold++;
+    } else {
+        currentNumTimesAboveThreshold = 0;
+    }
+
+    if (currentNumTimesAboveThreshold >= NUM_REQUIRED_LEVELS_ABOVE_AUDIO_INPUT_THRESHOLD) {
+        endReactionWrapper("raiseHand");
+        currentNumTimesAboveThreshold = 0;
+    }
+}
+
+
 function beginReactionWrapper(reaction) {
     maybeDeleteRemoteIndicatorTimeout();
 
@@ -222,10 +268,19 @@ function beginReactionWrapper(reaction) {
             break;
         case ("point"):
             deleteOldReticles();
+            pointAtTarget = MyAvatar.getHeadLookAt();
             if (!mouseMoveEventsConnected) {
                 Controller.mouseMoveEvent.connect(mouseMoveEvent);
                 mouseMoveEventsConnected = true;
             }
+            if (!targetPointInterpolateConnected) {
+                Script.update.connect(targetPointInterpolate);
+                targetPointInterpolateConnected = true;
+            }
+            break;
+        case ("raiseHand"):
+            checkInputAudioLevelsInterval = Script.setInterval(checkInputLevelsCallback, CHECK_INPUT_AUDIO_LEVELS_INTERVAL_MS);
+            break;
     }
 }
 
@@ -244,6 +299,8 @@ function deleteOldReticles() {
 var MAX_INTERSECTION_DISTANCE_M = 50;
 var reticleUpdateRateLimiterTimer = false;
 var RETICLE_UPDATE_RATE_LIMITER_TIMER_MS = 75;
+var POINT_AT_MIX_ALPHA = 0.15;
+var reticlePosition = Vec3.ZERO;
 function mouseMoveEvent(event) {
     if (!reticleUpdateRateLimiterTimer) {
         reticleUpdateRateLimiterTimer = Script.setTimeout(function() {
@@ -255,11 +312,10 @@ function mouseMoveEvent(event) {
 
 
     var pickRay = Camera.computePickRay(event.x, event.y);
-    var avatarIntersectionData = AvatarManager.findRayIntersection(pickRay);
+    var avatarIntersectionData = AvatarManager.findRayIntersection(pickRay, [], [MyAvatar.sessionUUID], false);
     var entityIntersectionData = Entities.findRayIntersection(pickRay, true);
     var avatarIntersectionDistanceM = avatarIntersectionData.intersects && avatarIntersectionData.distance < MAX_INTERSECTION_DISTANCE_M ? avatarIntersectionData.distance : null;
     var entityIntersectionDistanceM = entityIntersectionData.intersects && entityIntersectionData.distance < MAX_INTERSECTION_DISTANCE_M ? entityIntersectionData.distance : null;
-    var reticlePosition;
 
     if (avatarIntersectionDistanceM && entityIntersectionDistanceM) {
         if (avatarIntersectionDistanceM < entityIntersectionDistanceM) {
@@ -277,7 +333,7 @@ function mouseMoveEvent(event) {
     }
 
     if (pointReticle && reticlePosition) {
-        Entities.editEntity(pointReticle, { position: reticlePosition });
+        Entities.editEntity(pointReticle, { position: reticlePosition, visible: isReticleVisible });
     } else if (reticlePosition) {
         pointReticle = Entities.addEntity({
             type: "Box",
@@ -313,6 +369,7 @@ function triggerReactionWrapper(reaction) {
     }, WAIT_TO_RESTORE_EMOTE_INDICATOR_ICON_MS);
 }
 
+
 function maybeClearReticleUpdateLimiterTimeout() {
     if (reticleUpdateRateLimiterTimer) {
         Script.clearTimeout(reticleUpdateRateLimiterTimer);
@@ -342,8 +399,15 @@ function endReactionWrapper(reaction) {
                 Controller.mouseMoveEvent.disconnect(mouseMoveEvent);
                 mouseMoveEventsConnected = false;
             }
+            if (targetPointInterpolateConnected) {
+                Script.update.disconnect(targetPointInterpolate);
+                targetPointInterpolateConnected = false;
+            }
             maybeClearReticleUpdateLimiterTimeout();
             deleteOldReticles();
+            break;
+        case ("raiseHand"):
+            maybeClearInputAudioLevelsInterval();
             break;
     }
 }
@@ -393,6 +457,7 @@ function onMessageFromEmoteAppBar(message) {
     }
 }
 
+
 function getEmojiURLFromCode(code) {
     var emojiObject = emojiList[emojiCodeMap[code]];
     var emojiFilename;
@@ -405,6 +470,7 @@ function getEmojiURLFromCode(code) {
     return "../../emojiApp/resources/images/emojis/52px/" + emojiFilename;
 }
 
+
 function updateEmoteIndicatorIcon(iconURL) {
     emoteAppBarWindow.sendToQml({
         "source": "simplifiedEmote.js",
@@ -416,17 +482,9 @@ function updateEmoteIndicatorIcon(iconURL) {
 }
 
 
-function onGeometryChanged(rect) {
-    updateEmoteAppBarPosition();
-}
-
-
 function onWindowMinimizedChanged(isMinimized) {
-    if (isMinimized) {
-        handleEmoteIndicatorVisibleChanged(false);
-    } else if (!HMD.active) {
-        handleEmoteIndicatorVisibleChanged(true);
-    }
+    isWindowMinimized = isMinimized;
+    maybeChangeEmoteIndicatorVisibility(!isMinimized);
 }
 
 
@@ -444,17 +502,20 @@ function keyPressHandler(event) {
     }
 
     if (!event.isAutoRepeat && ! event.isMeta && ! event.isControl && ! event.isAlt) {
-        if (event.text === POSITIVE_KEY) {
+        if (event.text.toLowerCase() === POSITIVE_KEY) {
             triggerReactionWrapper("positive");
-        } else if (event.text === NEGATIVE_KEY) {
+        } else if (event.text.toLowerCase() === NEGATIVE_KEY) {
             triggerReactionWrapper("negative");
-        } else if (event.text === RAISE_HAND_KEY) {
+        } else if (event.text.toLowerCase() === RAISE_HAND_KEY) {
             toggleReaction("raiseHand");
-        } else if (event.text === APPLAUD_KEY) {
-            toggleReaction("applaud");
-        } else if (event.text === POINT_KEY) {
+        } else if (event.text.toLowerCase() === APPLAUD_KEY) {
+            // Make sure this doesn't get triggered if you are flying, falling, or jumping
+            if (!MyAvatar.isInAir()) {
+                toggleReaction("applaud");
+            }
+        } else if (event.text.toLowerCase() === POINT_KEY) {
             toggleReaction("point");
-        } else if (event.text === EMOTE_WINDOW && !(Settings.getValue("io.highfidelity.isEditing", false))) {
+        } else if (event.text.toLowerCase() === EMOTE_WINDOW && !(Settings.getValue("io.highfidelity.isEditing", false))) {
             toggleEmojiApp();
         }
     }
@@ -463,7 +524,7 @@ function keyPressHandler(event) {
 
 function keyReleaseHandler(event) {
     if (!event.isAutoRepeat) {
-        if (event.text === APPLAUD_KEY) {
+        if (event.text.toLowerCase() === APPLAUD_KEY) {
             if (reactionsBegun.indexOf("applaud") > -1) {
                 toggleReaction("applaud");
             }
@@ -508,10 +569,11 @@ function showEmoteAppBar() {
             x: EMOTE_APP_BAR_WIDTH_PX,
             y: EMOTE_APP_BAR_HEIGHT_PX
         },
-        position: {
-            x: Window.x + EMOTE_APP_BAR_LEFT_MARGIN,
-            y: Window.y + Window.innerHeight - EMOTE_APP_BAR_BOTTOM_MARGIN
+        relativePosition: {
+            x: EMOTE_APP_BAR_LEFT_MARGIN,
+            y: EMOTE_APP_BAR_BOTTOM_MARGIN
         },
+        relativePositionAnchor: Desktop.RelativePositionAnchor.BOTTOM_LEFT,
         overrideFlags: EMOTE_APP_BAR_WINDOW_FLAGS
     });
 
@@ -519,14 +581,27 @@ function showEmoteAppBar() {
 }
 
 
-function handleEmoteIndicatorVisibleChanged(shouldBeVisible) {
-    if (shouldBeVisible && !emoteAppBarWindow) {
+// There is currently no property in the Window Scripting Interface to determine
+// whether the Interface window is currently minimized. This feels like an oversight.
+// We should add that functionality to the Window Scripting Interface, and remove `isWindowMinimized` below.
+var isWindowMinimized = false;
+function maybeChangeEmoteIndicatorVisibility(desiredVisibility) {
+    if (isWindowMinimized || HMD.active) {
+        desiredVisibility = false;
+    }
+
+    if (desiredVisibility && !emoteAppBarWindow) {
         showEmoteAppBar();
-    } else if (emoteAppBarWindow) {
+    } else if (!desiredVisibility && emoteAppBarWindow) {
         emoteAppBarWindow.fromQml.disconnect(onMessageFromEmoteAppBar);
         emoteAppBarWindow.close();
         emoteAppBarWindow = false;
     }
+}
+
+
+function handleFTUEScreensVisibilityChanged(ftueScreenVisible) {
+    maybeChangeEmoteIndicatorVisibility(!ftueScreenVisible);
 }
 
 
@@ -535,18 +610,15 @@ function onDisplayModeChanged(isHMDMode) {
         endReactionWrapper(react);
     });
 
-    if (isHMDMode) {
-        handleEmoteIndicatorVisibleChanged(false);
-    } else {
-        handleEmoteIndicatorVisibleChanged(true);
-    }
+    maybeChangeEmoteIndicatorVisibility(!isHMDMode);
 }
 
 
-var emojiAPI = Script.require("./emojiApp/simplifiedEmoji.js?" + Date.now());
+var emojiAPI = Script.require("./emojiApp/simplifiedEmoji.js");
 var keyPressSignalsConnected = false;
 var emojiCodeMap;
 var customEmojiCodeMap;
+var _this;
 function setup() {
     deleteOldReticles();
 
@@ -574,16 +646,25 @@ function setup() {
     }, {});
 
     Window.minimizedChanged.connect(onWindowMinimizedChanged);
-    Window.geometryChanged.connect(onGeometryChanged);
     HMD.displayModeChanged.connect(onDisplayModeChanged);
 
     getSounds();
-    handleEmoteIndicatorVisibleChanged(true);
+    maybeChangeEmoteIndicatorVisibility(true);
     
     Controller.keyPressEvent.connect(keyPressHandler);
     Controller.keyReleaseEvent.connect(keyReleaseHandler);
     keyPressSignalsConnected = true;
     Script.scriptEnding.connect(unload);
+    
+    function Emote() {
+        _this = this;
+    }
+
+    Emote.prototype = {
+        handleFTUEScreensVisibilityChanged: handleFTUEScreensVisibilityChanged
+    };
+
+    return new Emote();
 }
 
 
@@ -605,9 +686,9 @@ function unload() {
     maybeClearClapSoundInterval();
     maybeClearReticleUpdateLimiterTimeout();
     maybeDeleteRemoteIndicatorTimeout();
+    maybeClearInputAudioLevelsInterval();
 
     Window.minimizedChanged.disconnect(onWindowMinimizedChanged);
-    Window.geometryChanged.disconnect(onGeometryChanged);
     HMD.displayModeChanged.disconnect(onDisplayModeChanged);
 
     if (keyPressSignalsConnected) {
@@ -639,7 +720,7 @@ function unload() {
 // *************************************
 // #region EMOJI_UTILITY
 
-var EMOJI_52_BASE_URL = "../../resources/images/emojis/52px/";
+
 function selectedEmoji(code) {
     emojiAPI.addEmoji(code);
     // this URL needs to be relative to SimplifiedEmoteIndicator.qml
@@ -754,4 +835,6 @@ function toggleEmojiApp() {
 // END EMOJI
 // *************************************
 
-setup();
+var emote = setup();
+
+module.exports = emote;

@@ -81,7 +81,6 @@
 #include "VisionSqueeze.h"
 
 class GLCanvas;
-class FaceTracker;
 class MainWindow;
 class AssetUpload;
 class CompositorHelper;
@@ -91,12 +90,6 @@ namespace controller {
     class StateController;
 }
 
-#ifdef Q_OS_WIN
-static const UINT UWM_IDENTIFY_INSTANCES =
-    RegisterWindowMessage("UWM_IDENTIFY_INSTANCES_{8AB82783-B74A-4258-955B-8188C22AA0D6}_" + qgetenv("USERNAME"));
-static const UINT UWM_SHOW_APPLICATION =
-    RegisterWindowMessage("UWM_SHOW_APPLICATION_{71123FD6-3DA8-4DC1-9C27-8A12A6250CBA}_" + qgetenv("USERNAME"));
-#endif
 
 static const QString RUNNING_MARKER_FILENAME = "Interface.running";
 static const QString SCRIPTS_SWITCH = "scripts";
@@ -197,9 +190,6 @@ public:
 
     ivec2 getMouse() const;
 
-    FaceTracker* getActiveFaceTracker();
-    FaceTracker* getSelectedFaceTracker();
-
     ApplicationOverlay& getApplicationOverlay() { return _applicationOverlay; }
     const ApplicationOverlay& getApplicationOverlay() const { return _applicationOverlay; }
     CompositorHelper& getApplicationCompositor() const;
@@ -298,7 +288,7 @@ public:
 
     virtual void pushPostUpdateLambda(void* key, const std::function<void()>& func) override;
 
-    void updateMyAvatarLookAtPosition();
+    void updateMyAvatarLookAtPosition(float deltaTime);
 
     float getGameLoopRate() const { return _gameLoopCounter.rate(); }
 
@@ -429,19 +419,11 @@ public slots:
     static void packageModel();
 
     void resetSensors(bool andReload = false);
-    void setActiveFaceTracker() const;
 
     void hmdVisibleChanged(bool visible);
 
 #if (PR_BUILD || DEV_BUILD)
     void sendWrongProtocolVersionsSignature(bool checked) { ::sendWrongProtocolVersionsSignature(checked); }
-#endif
-
-#ifdef HAVE_IVIEWHMD
-    void setActiveEyeTracker();
-    void calibrateEyeTracker1Point();
-    void calibrateEyeTracker3Points();
-    void calibrateEyeTracker5Points();
 #endif
 
     static void showHelp();
@@ -509,8 +491,6 @@ private slots:
     void onPresent(quint32 frameCount);
 
     void resettingDomain();
-
-    void faceTrackerMuteToggled();
 
     void activeChanged(Qt::ApplicationState state);
     void windowMinimizedChanged(bool minimized);
@@ -748,8 +728,6 @@ private:
     LoginStateManager _loginStateManager;
     PerformanceManager _performanceManager;
     RefreshRateManager _refreshRateManager;
-
-    quint64 _lastFaceTrackerUpdate;
 
     GameWorkload _gameWorkload;
 

@@ -239,6 +239,11 @@ ScriptEngine::ScriptEngine(Context context, const QString& scriptContents, const
     }
 }
 
+QString ScriptEngine::getTypeAsString() const {
+    auto value = QVariant::fromValue(_type).toString();
+    return value.isEmpty() ? "unknown" : value.toLower();
+}
+
 QString ScriptEngine::getContext() const {
     switch (_context) {
         case CLIENT_SCRIPT:
@@ -1025,8 +1030,8 @@ void ScriptEngine::addEventHandler(const EntityItemID& entityID, const QString& 
         };
 
         /**jsdoc
-         * The name of an entity event. When the entity event occurs, any function that has been registered for that event via 
-         * {@link Script.addEventHandler} is called with parameters per the entity event.
+         * <p>The name of an entity event. When the entity event occurs, any function that has been registered for that event via 
+         * {@link Script.addEventHandler} is called with parameters per the entity event.</p>
          * <table>
          *   <thead>
          *     <tr><th>Event Name</th><th>Entity Event</th></tr>

@@ -17,14 +17,12 @@ WIPE_PATHS = []
 
 if sys.platform == "win32":
     WIPE_PATHS = [
-        'jsdoc',
-        'resources/serverless'
+        'jsdoc'
     ]
 elif sys.platform == "darwin":
     INTERFACE_BUILD_PATH = os.path.join(INTERFACE_BUILD_PATH, "Interface.app", "Contents", "Resources")
     WIPE_PATHS = [
-        'jsdoc',
-        'serverless'
+        'jsdoc'
     ]
 
 
@@ -80,9 +78,6 @@ def fixupMacZip(filename):
                     continue
                 # ignore the nitpick app
                 if newFilename.startswith('nitpick.app'):
-                    continue
-                # ignore the serverless content
-                if newFilename.startswith('interface.app/Contents/Resources/serverless'):
                     continue
                 # if we made it here, include the file in the output
                 buffer = inzip.read(entry.filename)
@@ -149,7 +144,7 @@ def signBuild(executablePath):
 
 
 def zipDarwinLauncher():
-    launcherSourcePath = os.path.join(SOURCE_PATH, 'launchers', sys.platform)
+    launcherSourcePath = os.path.join(SOURCE_PATH, 'launchers', 'qt')
     launcherBuildPath = os.path.join(BUILD_PATH, 'launcher')
 
     archiveName = computeArchiveName('HQ Launcher')
@@ -170,7 +165,7 @@ def zipDarwinLauncher():
 
 
 def buildLightLauncher():
-    launcherSourcePath = os.path.join(SOURCE_PATH, 'launchers', sys.platform)
+    launcherSourcePath = os.path.join(SOURCE_PATH, 'launchers', 'qt')
     launcherBuildPath = os.path.join(BUILD_PATH, 'launcher')
     if not os.path.exists(launcherBuildPath):
         os.makedirs(launcherBuildPath)

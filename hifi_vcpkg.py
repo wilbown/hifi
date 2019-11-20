@@ -134,7 +134,7 @@ endif()
             downloadVcpkg = True
 
         if not downloadVcpkg and not os.path.isfile(self.exe):
-            print("Missing executable, boostrapping")
+            print("Missing executable, boot-strapping")
             downloadVcpkg = True
         
         # Make sure we have a vcpkg executable
@@ -265,16 +265,18 @@ endif()
             if platform.system() == 'Windows':
                 url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-windows3.tar.gz'
             elif platform.system() == 'Darwin':
-                url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-macos3.tar.gz'
+                url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-macos.tar.gz?versionId=bLAgnoJ8IMKpqv8NFDcAu8hsyQy3Rwwz'
             elif platform.system() == 'Linux':
-                if platform.linux_distribution()[1][:3] == '16.' or True:
+                if platform.linux_distribution()[1][:3] == '16.':
                     url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-ubuntu-16.04-with-symbols.tar.gz'
                 elif platform.linux_distribution()[1][:3] == '18.':
                     url = 'https://hifi-public.s3.amazonaws.com/dependencies/vcpkg/qt5-install-5.12.3-ubuntu-18.04.tar.gz'
                 else:
                     print('UNKNOWN LINUX VERSION!!!')
+                    return;
             else:
                 print('UNKNOWN OPERATING SYSTEM!!!')
+                return;
 
             print('Extracting ' + url + ' to ' + dest)
             hifi_utils.downloadAndExtract(url, dest)
