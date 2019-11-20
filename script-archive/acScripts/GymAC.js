@@ -46,6 +46,8 @@ var ROT_ZR = Quat.fromPitchYawRollDegrees(0, 0, -15);
 var AVATAR_DIST_MAX = 30;
 var AVATAR_DIST_NEAR = 5;
 
+var MAX_OBJ_PER_ART = 30;
+
 // var SCORE_WAIT = 10000;
 
 // // var COLOR_TEAL = { red: 0, green: 255, blue: 255 };
@@ -222,7 +224,7 @@ var environment = { // observation = object, info = dictionary
     observation: [],
     reward: 0.0,
     done: false,
-    info: {scoringwait: 0, scoring: false, saveart: false, paintparent:false, artcreated: 0, error: null},
+    info: {scoringwait: 0, scoring: false, saveart: false, paintparent:false, artindex: 0, numobj: 0, error: null},
 }
 var oneshot = true;
 var totalTime = 0.0;
@@ -291,11 +293,11 @@ function update(deltaTime) {
         var rads = Vec3.getAngle(actor.position, avtr.position);
 
         if (dist < 0.2) {
-            rwd += (scoring)?20.0:-5.0;
+            rwd += (scoring)?0.0:-5.0;
             // this.environment.done = true;
             // Entities.editEntity(this.actorID, { position: Vec3.subtract(actor.position, Vec3.normalize(actor.position)) });
         }
-        else if (dist < 0.5) rwd += (scoring)?4.0:-0.5;
+        else if (dist < 0.6) rwd += (scoring)?20.0:-1.0;
         else if (dist < 1.5) rwd += (scoring)?0.0:0.2;
         else if (dist < 5) rwd += (scoring)?0.0:0.03;
         else if (dist < 10) rwd += (scoring)?0.0:0.01;
@@ -381,62 +383,68 @@ function handleGymMessage(_message) {
         // var scoring = (Date.now() < this.environment.info.scoring);
 
         if (action == "reset") {
+            var createplatform = false;
             // print("GymAC.handleGymMessage: RESET!");
+
+            if (this.environment.info.paintparent) {
+                // print("GymAC.handleGymMessage: saveart: "+this.environment.info.saveart);
+                if (Entities.isAddedEntity(this.environment.info.paintparent)) {
+                    if (this.environment.info.saveart) {
+                        this.environment.info.saveart = false;
+                        // move all old up
+                        for (t = 0; t < this.environment.info.artindex; t++) {
+                            var platformIDs = Entities.findEntitiesByName("DerpArt"+t, POS_ZERO, AVATAR_DIST_MAX, false);
+                            for (i = 0; i < platformIDs.length; i++) {
+                                var platform = Entities.getEntityProperties(platformIDs[i], ["position"]);
+                                var newpos = Vec3.sum(platform.position, { x: 0, y: 1.0, z: 0 });
+                                newpos = Vec3.multiplyQbyV(ROT_PLATFORM_ART, newpos);
+                                Entities.editEntity(platformIDs[i], { position: newpos });
+                            }
+                        }
+                        // move
+                        Entities.editEntity(this.environment.info.paintparent, { position: { x: 0, y: -0.4, z: 8.0 } });
+    
+                        this.environment.info.artindex += 1;
+                        // print("GymAC.handleGymMessage: SAVE! " + this.environment.info.paintparent);
+                    } else {
+                        Entities.deleteEntity(this.environment.info.paintparent);
+                        this.environment.info.numobj = 0;
+                        // print("GymAC.handleGymMessage: DELETE! " + this.environment.info.paintparent);
+                    }
+                    createplatform = true;
+                }
+
+            } else createplatform = true;
+
+            if (createplatform) {
+                // this.environment.info.paintparent = Entities.addEntity({
+                //     // visible: false,
+                //     name: "DerpArt"+this.environment.info.artindex,
+                //     type: "Shape",
+                //     shape: "Cylinder",
+                //     position: { x: 0.0, y: 0.0, z: 0.0 },
+                //     dimensions: { x: 5.0, y: 0.1, z: 5.0 },
+                //     color: { red: 0, green: 128, blue: 255 },
+                //     alpha: 0.5,
+                //     lifetime: 120,
+                // });
+                this.environment.info.paintparent = Entities.addEntity({
+                    // visible: false,
+                    name: "DerpArt"+this.environment.info.artindex,
+                    type: "Model",
+                    modelURL: "https://xaotica.s3-us-west-1.amazonaws.com/ArtQ/Entities/SmallCircle.fbx",
+                    position: { x: 0.0, y: 0.0, z: 0.0 },
+                    dimensions: { x: 5, y: 0.18750138580799103, z: 5 },
+                    grab: { grabbable: false },
+                    // lifetime: 180,
+                });
+                // print("GymAC.handleGymMessage: CREATED! DerpArt"+this.environment.info.artindex + " " + this.environment.info.paintparent);
+            }
+
             // SHAPES[Math.floor(Math.random()*SHAPES.length)]
             // Entities.editEntity(this.actorID, { shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, color: COLOR_ZERO, alpha: 1.0 });
             // Entities.editEntity(this.actorID, { visible: true });
-            if (this.environment.info.paintparent)
-                Entities.editEntity(this.actorID, { position: POS_ZERO, shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, alpha: 1.0 });
-            else
-                Entities.editEntity(this.actorID, { position: POS_ZERO, shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, alpha: 1.0 });
-
-            // print("GymAC.handleGymMessage: saveart: "+this.environment.info.saveart);
-            if (this.environment.info.paintparent && Entities.isAddedEntity(this.environment.info.paintparent)) {
-                if (this.environment.info.saveart) {
-                    this.environment.info.saveart = false;
-                    // move all old up
-                    for (t = 0; t < this.environment.info.artcreated; t++) {
-                        var platformIDs = Entities.findEntitiesByName("DerpArt"+t, POS_ZERO, 1000, false);
-                        for (i = 0; i < platformIDs.length; i++) {
-                            var platform = Entities.getEntityProperties(platformIDs[i], ["position"]);
-                            var newpos = Vec3.sum(platform.position, { x: 0, y: 1.0, z: 0 });
-                            newpos = Vec3.multiplyQbyV(ROT_PLATFORM_ART, newpos);
-                            Entities.editEntity(platformIDs[i], { position: newpos });
-                        }
-                    }
-                    // move
-                    Entities.editEntity(this.environment.info.paintparent, { position: { x: 0, y: -0.4, z: 8.0 } });
-
-                    this.environment.info.artcreated += 1;
-                    // print("GymAC.handleGymMessage: SAVE! " + this.environment.info.paintparent);
-                } else {
-                    Entities.deleteEntity(this.environment.info.paintparent);
-                    // print("GymAC.handleGymMessage: DELETE! " + this.environment.info.paintparent);
-                }
-            }
-            // this.environment.info.paintparent = Entities.addEntity({
-            //     // visible: false,
-            //     name: "DerpArt"+this.environment.info.artcreated,
-            //     type: "Shape",
-            //     shape: "Cylinder",
-            //     position: { x: 0.0, y: 0.0, z: 0.0 },
-            //     dimensions: { x: 5.0, y: 0.1, z: 5.0 },
-            //     color: { red: 0, green: 128, blue: 255 },
-            //     alpha: 0.5,
-            //     lifetime: 120,
-            // });
-            this.environment.info.paintparent = Entities.addEntity({
-                // visible: false,
-                name: "DerpArt"+this.environment.info.artcreated,
-                type: "Model",
-                modelURL: "https://xaotica.s3-us-west-1.amazonaws.com/ArtQ/Entities/SmallCircle.fbx",
-                position: { x: 0.0, y: 0.0, z: 0.0 },
-                dimensions: { x: 5, y: 0.18750138580799103, z: 5 },
-                grab: { grabbable: false },
-                // lifetime: 180,
-            });
-            // print("GymAC.handleGymMessage: CREATED! DerpArt"+this.environment.info.artcreated + " " + this.environment.info.paintparent);
-
+            Entities.editEntity(this.actorID, { position: POS_ZERO, shape: SHAPE_ZERO, dimensions: { x: 0.5, y: 0.5, z: 0.5 }, alpha: 1.0 });
         }
 
 
@@ -480,20 +488,23 @@ function handleGymMessage(_message) {
             } else if (this.environment.info.paintparent && Entities.isAddedEntity(this.environment.info.paintparent)) {
 
                 if (action == 16) {
-                    // create object
-                    Entities.addEntity({
-                        parentID: this.environment.info.paintparent,
-                        type: "Shape",
-                        shape: actor.shape,
-                        // localPosition: Vec3.sum(actor.position, Vec3.multiplyQbyV(actor.rotation, { x: 0, y: 0, z: 0 })),
-                        // localPosition: actor.position,
-                        // localRotation: actor.rotation,
-                        position: actor.position,
-                        rotation: actor.rotation,
-                        dimensions: { x: 0.25, y: 0.25, z: 0.25 },
-                        color: actor.color,
-                        alpha: 1.0,
-                    });
+                    if (this.environment.info.numobj < MAX_OBJ_PER_ART) {
+                        // create object
+                        Entities.addEntity({
+                            parentID: this.environment.info.paintparent,
+                            type: "Shape",
+                            shape: actor.shape,
+                            // localPosition: Vec3.sum(actor.position, Vec3.multiplyQbyV(actor.rotation, { x: 0, y: 0, z: 0 })),
+                            // localPosition: actor.position,
+                            // localRotation: actor.rotation,
+                            position: actor.position,
+                            rotation: actor.rotation,
+                            dimensions: { x: 0.25, y: 0.25, z: 0.25 },
+                            color: actor.color,
+                            alpha: 1.0,
+                        });
+                        this.environment.info.numobj += 1;
+                    }
                 // } else if (action == 17) {
                 //     // delete object
                 // } else if (action == 17) {
