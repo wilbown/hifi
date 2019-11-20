@@ -191,7 +191,7 @@ void packBlendshapeOffsets_AVX2(float (*unpacked)[9], uint32_t (*packed)[4], int
 
         __m256i loadmask = _mm256_cvtepi8_epi32(_mm_cvtsi64_si128(0xffffffffffffffffULL >> (64 - 8 * rem)));
         __m256 tz = _mm256_mask_i32gather_ps(_mm256_setzero_ps(), unpacked[i+0], _mm256_setr_epi32(8,17,26,35,44,53,62,71), 
-                                             _mm256_castsi256_ps(loadmask), sizeof(float));
+                                             _mm256_castsi256_ps(loadmask), 4);
         // abs(pos)
         __m256 apx = _mm256_andnot_ps(_mm256_set1_ps(-0.0f), px);
         __m256 apy = _mm256_andnot_ps(_mm256_set1_ps(-0.0f), py);
